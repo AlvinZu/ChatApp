@@ -3,23 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChatApp Mejorado</title>
-  
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <title>ChatApp con Registro</title>
   
     <style>
-        /* --- ESTILOS GENERALES (SIN CAMBIOS) --- */
+        /* --- ESTILOS GENERALES --- */
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background-color: #f5f5f5; height: 100vh; display: flex; justify-content: center; align-items: center; }
         .app-container { width: 100%; max-width: 400px; height: 90vh; background-color: white; border-radius: 12px; overflow: hidden; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; }
 
-        /* --- PANTALLA DE LOGIN --- */
-        .login-screen { display: flex; flex-direction: column; padding: 40px 20px; justify-content: center; align-items: center; height: 100%; text-align: center; }
-        .login-form { width: 100%; max-width: 300px; margin-top: 20px; }
-        .login-form input { width: 100%; margin-bottom: 16px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; }
-        .login-button { background-color: #128C7E; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-size: 16px; }
+        /* --- NUEVA PANTALLA DE LOGIN/REGISTRO --- */
+        .auth-screen { display: flex; flex-direction: column; padding: 30px 20px; justify-content: center; align-items: center; height: 100%; text-align: center; }
+        .auth-form { width: 100%; max-width: 300px; margin-top: 20px; }
+        .auth-form input { width: 100%; margin-bottom: 12px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; }
+        .auth-button { background-color: #128C7E; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-size: 16px; margin-top: 10px; }
+        .auth-switch-link { color: #128C7E; cursor: pointer; margin-top: 20px; display: inline-block; }
+        #registerForm { display: none; }
+        .error-message { color: #d93025; font-size: 14px; margin-top: 15px; min-height: 20px; }
 
         /* --- ENCABEZADOS --- */
         .header { background-color: #128C7E; color: white; padding: 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
@@ -59,7 +58,8 @@
         .profile-screen { display: none; padding: 20px; }
         .profile-form { display: flex; flex-direction: column; }
         .profile-form input { margin-bottom: 16px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; }
-        .save-button { background-color: #128C7E; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; }
+        .save-button, .logout-button { background-color: #128C7E; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; }
+        .logout-button { background-color: #aa3939; margin-top: 20px; }
         .bottom-nav { display: flex; background-color: #f9f9f9; border-top: 1px solid #e0e0e0; flex-shrink: 0; }
         .nav-item { flex: 1; text-align: center; padding: 16px; cursor: pointer; color: #666; }
         .nav-item.active { color: #128C7E; border-top: 2px solid #128C7E; }
@@ -68,13 +68,29 @@
   
 <body>
     <div class="app-container">
-        <div class="login-screen" id="loginScreen">
-            <h2>Bienvenido a ChatApp</h2>
-            <p style="margin: 10px 0;">Ingresa tu nombre para comenzar.</p>
-            <div class="login-form">
-                <input type="text" id="userNameInput" placeholder="Tu nombre">
-                <button class="login-button" id="loginButton">Ingresar</button>
+        
+        <div class="auth-screen" id="authScreen">
+            <div id="loginForm">
+                <h2>Iniciar Sesión</h2>
+                <div class="auth-form">
+                    <input type="email" id="loginEmail" placeholder="Correo electrónico" required>
+                    <input type="password" id="loginPassword" placeholder="Contraseña" required>
+                    <button class="auth-button" id="loginButton">Ingresar</button>
+                </div>
+                <p class="auth-switch-link" id="showRegister">¿No tienes cuenta? Regístrate</p>
             </div>
+
+            <div id="registerForm">
+                <h2>Crear Cuenta</h2>
+                <div class="auth-form">
+                    <input type="text" id="registerName" placeholder="Tu nombre" required>
+                    <input type="email" id="registerEmail" placeholder="Correo electrónico" required>
+                    <input type="password" id="registerPassword" placeholder="Contraseña (mín. 6 caracteres)" required>
+                    <button class="auth-button" id="registerButton">Registrarme</button>
+                </div>
+                <p class="auth-switch-link" id="showLogin">¿Ya tienes cuenta? Inicia sesión</p>
+            </div>
+            <div class="error-message" id="authError"></div>
         </div>
 
         <div id="mainContent" style="display: none; flex-direction: column; height: 100%;">
@@ -95,7 +111,8 @@
                     <div class="profile-form">
                         <input type="text" id="profileName" placeholder="Tu nombre">
                         <input type="text" id="profileStatus" placeholder="Tu estado">
-                        <button class="save-button" id="saveProfileBtn">Guardar</button>
+                        <button class="save-button" id="saveProfileBtn">Guardar Cambios</button>
+                        <button class="logout-button" id="logoutButton">Cerrar Sesión</button>
                     </div>
                 </div>
             </div>
@@ -123,417 +140,331 @@
             </div>
         </div>
     </div>
-
-    
     
     <script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
+        // 1. IMPORTACIONES
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+        import { 
+            getAuth, onAuthStateChanged, createUserWithEmailAndPassword, 
+            signInWithEmailAndPassword, signOut 
+        } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
+        import { 
+            getFirestore, collection, doc, setDoc, getDoc, serverTimestamp, 
+            query, where, orderBy, onSnapshot, updateDoc, deleteDoc, addDoc 
+        } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-  const firebaseConfig = {
-  apiKey: "AIzaSyBE6CYhaLokdTexZLH5zPJDmi-8a7KFbB0",
-  authDomain: "chatapp-7382f.firebaseapp.com",
-  projectId: "chatapp-7382f",
-  storageBucket: "chatapp-7382f.firebasestorage.app",
-  messagingSenderId: "27141261584",
-  appId: "1:27141261584:web:ecefba4affa1d3122bfd95",
-  measurementId: "G-WTQPXV8B7J"
-};
-        
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
-        const db = firebase.firestore();
+        // 2. CONFIGURACIÓN E INICIALIZACIÓN
+        const firebaseConfig = {
+            apiKey: "AIzaSyBE6CYhaLokdTexZLH5zPJDmi-8a7KFbB0",
+            authDomain: "chatapp-7382f.firebaseapp.com",
+            projectId: "chatapp-7382f",
+            storageBucket: "chatapp-7382f.appspot.com",
+            messagingSenderId: "27141261584",
+            appId: "1:27141261584:web:ecefba4affa1d3122bfd95",
+            measurementId: "G-WTQPXV8B7J"
+        };
 
-        // --- Variables Globales y Selectores del DOM ---
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- Selectores del DOM ---
         let currentUser = null;
-        let currentChatId = null;
-        let unsubscribeChatListener = null; // Para detener el listener de mensajes
-        let unsubscribePresenceListener = null; // Para el estado online
-        let typingTimeout = null;
-
-        // Caché de elementos del DOM
-        const loginScreen = document.getElementById('loginScreen');
+        const authScreen = document.getElementById('authScreen');
         const mainContent = document.getElementById('mainContent');
         const chatScreen = document.getElementById('chatScreen');
-        const chatList = document.getElementById('chatList');
-        const messagesContainer = document.getElementById('messagesContainer');
-        const messageInput = document.getElementById('messageInput');
-        const userNameInput = document.getElementById('userNameInput');
-        
-        // --- AUTENTICACIÓN Y ESTADO DEL USUARIO ---
-        
-        // Observador del estado de autenticación
-        auth.onAuthStateChanged(user => {
+        const authError = document.getElementById('authError');
+        const loginForm = document.getElementById('loginForm');
+        const registerForm = document.getElementById('registerForm');
+
+        // --- Observador de Autenticación (se encarga de mostrar la pantalla correcta) ---
+        onAuthStateChanged(auth, user => {
             if (user) {
-                // Usuario ha iniciado sesión
                 currentUser = user;
                 setupAppForUser();
             } else {
-                // Usuario no ha iniciado sesión
-                showLoginScreen();
+                currentUser = null;
+                showAuthScreen();
             }
         });
 
-        // Iniciar sesión anónimamente
-        async function login() {
-            const userName = userNameInput.value.trim();
-            if (!userName) {
-                alert('Por favor, ingresa tu nombre.');
+        // --- NUEVAS FUNCIONES DE AUTENTICACIÓN ---
+
+        async function registerUser() {
+            const name = document.getElementById('registerName').value.trim();
+            const email = document.getElementById('registerEmail').value.trim();
+            const password = document.getElementById('registerPassword').value.trim();
+            authError.textContent = '';
+
+            if (!name || !email || !password) {
+                authError.textContent = 'Todos los campos son obligatorios.';
                 return;
             }
 
             try {
-                const userCredential = await auth.signInAnonymously();
-                currentUser = userCredential.user;
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const user = userCredential.user;
                 
-                // Guardar o actualizar perfil del usuario
-                await db.collection('users').doc(currentUser.uid).set({
-                    name: userName,
+                // Crea el perfil del usuario en Firestore
+                await setDoc(doc(db, 'users', user.uid), {
+                    name: name,
+                    email: email,
                     status: 'online',
-                    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-                
-                setupAppForUser();
+                    lastSeen: serverTimestamp(),
+                    statusText: '¡Hola! Estoy usando ChatApp.'
+                });
+                // onAuthStateChanged se encargará del resto
             } catch (error) {
-                console.error("Error al iniciar sesión:", error);
-                alert("No se pudo iniciar sesión. Inténtalo de nuevo.");
+                handleAuthError(error);
             }
         }
-        
-        // Configurar la app después del login
-        async function setupAppForUser() {
-            updatePresence(); // Iniciar sistema de presencia
-            const userDoc = await db.collection('users').doc(currentUser.uid).get();
-            const userData = userDoc.data();
-            
-            document.getElementById('profileName').value = userData.name || '';
-            document.getElementById('profileStatus').value = userData.statusText || '';
-            document.getElementById('currentUserId').textContent = `Tu ID: ${currentUser.uid}`;
 
-            loginScreen.style.display = 'none';
-            chatScreen.style.display = 'none';
-            mainContent.style.display = 'flex';
-            
-            loadChats();
+        async function loginUser() {
+            const email = document.getElementById('loginEmail').value.trim();
+            const password = document.getElementById('loginPassword').value.trim();
+            authError.textContent = '';
+
+            if (!email || !password) {
+                authError.textContent = 'Todos los campos son obligatorios.';
+                return;
+            }
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                // onAuthStateChanged se encargará del resto
+            } catch (error) {
+                handleAuthError(error);
+            }
+        }
+
+        function logoutUser() {
+            signOut(auth);
         }
         
-        function showLoginScreen() {
+        function handleAuthError(error) {
+            console.error("Error de autenticación:", error.code);
+            switch (error.code) {
+                case 'auth/email-already-in-use':
+                    authError.textContent = 'Este correo electrónico ya está registrado.';
+                    break;
+                case 'auth/wrong-password':
+                    authError.textContent = 'La contraseña es incorrecta.';
+                    break;
+                case 'auth/user-not-found':
+                    authError.textContent = 'No se encontró un usuario con este correo.';
+                    break;
+                case 'auth/weak-password':
+                    authError.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+                    break;
+                default:
+                    authError.textContent = 'Ocurrió un error. Inténtalo de nuevo.';
+            }
+        }
+
+        // --- Gestión de Vistas ---
+
+        function showAuthScreen() {
             mainContent.style.display = 'none';
             chatScreen.style.display = 'none';
-            loginScreen.style.display = 'flex';
-        }
-
-        // NUEVO: Sistema de Presencia (En Línea / Desconectado)
-        function updatePresence() {
-            const userStatusRef = db.collection('users').doc(currentUser.uid);
-            // Firestore no tiene un 'onDisconnect' nativo como Realtime Database.
-            // Una estrategia común es actualizar un timestamp periódicamente.
-            // O, más simple, marcar como 'online' al cargar y 'offline' al cerrar.
-            
-            window.addEventListener('beforeunload', () => {
-                userStatusRef.update({
-                    status: 'offline',
-                    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
-                });
-            });
+            authScreen.style.display = 'flex';
         }
         
-        // --- NAVEGACIÓN Y VISTAS ---
+        async function setupAppForUser() {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            await updateDoc(userDocRef, { status: 'online', lastSeen: serverTimestamp() });
+            updatePresence();
+            
+            const userDoc = await getDoc(userDocRef);
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                document.getElementById('profileName').value = userData.name || '';
+                document.getElementById('profileStatus').value = userData.statusText || '';
+            }
+            document.getElementById('currentUserId').textContent = `Tu ID: ${currentUser.uid}`;
+            
+            authScreen.style.display = 'none';
+            chatScreen.style.display = 'none';
+            mainContent.style.display = 'flex';
+            loadChats();
+        }
+
+        // --- LÓGICA DE LA APP (sin cambios mayores) ---
+
+        let unsubscribeChatListener = null;
+        let unsubscribePresenceListener = null;
+        let typingTimeout = null;
+        const chatList = document.getElementById('chatList');
+        const messageInput = document.getElementById('messageInput');
+        
+        function updatePresence() {
+            const userStatusRef = doc(db, 'users', currentUser.uid);
+            window.addEventListener('beforeunload', () => {
+                updateDoc(userStatusRef, { status: 'offline', lastSeen: serverTimestamp() });
+            });
+        }
 
         function showScreen(screen) {
-            const chatsScreen = document.getElementById('chatsScreen');
-            const profileScreen = document.getElementById('profileScreen');
-            const navChats = document.getElementById('navChats');
-            const navProfile = document.getElementById('navProfile');
-            
-            if (screen === 'chats') {
-                chatsScreen.style.display = 'block';
-                profileScreen.style.display = 'none';
-                navChats.classList.add('active');
-                navProfile.classList.remove('active');
-            } else if (screen === 'profile') {
-                chatsScreen.style.display = 'none';
-                profileScreen.style.display = 'block';
-                navChats.classList.remove('active');
-                navProfile.classList.add('active');
-            }
+            document.getElementById('chatsScreen').style.display = (screen === 'chats') ? 'block' : 'none';
+            document.getElementById('profileScreen').style.display = (screen === 'profile') ? 'block' : 'none';
+            document.getElementById('navChats').classList.toggle('active', screen === 'chats');
+            document.getElementById('navProfile').classList.toggle('active', screen === 'profile');
         }
 
         function goBackToChats() {
             chatScreen.style.display = 'none';
             mainContent.style.display = 'flex';
-            currentChatId = null;
-            // Detener listeners para ahorrar recursos
             if (unsubscribeChatListener) unsubscribeChatListener();
             if (unsubscribePresenceListener) unsubscribePresenceListener();
         }
 
-        // --- LÓGICA DE CHATS ---
-
         function loadChats() {
-            db.collection('chats')
-              .where('participants', 'array-contains', currentUser.uid)
-              .orderBy('lastUpdated', 'desc') // Ordenar por el más reciente
-              .onSnapshot(snapshot => {
-                  chatList.innerHTML = ''; // Limpiar lista para redibujar
-                  snapshot.forEach(doc => {
-                      const chat = { id: doc.id, ...doc.data() };
-                      displayChatItem(chat);
-                  });
-              });
+            const chatsRef = collection(db, 'chats');
+            const q = query(chatsRef, where('participants', 'array-contains', currentUser.uid), orderBy('lastUpdated', 'desc'));
+            onSnapshot(q, snapshot => {
+                chatList.innerHTML = '';
+                snapshot.forEach(doc => displayChatItem({ id: doc.id, ...doc.data() }));
+            });
         }
 
         async function displayChatItem(chat) {
-            const otherParticipantId = chat.participants.find(id => id !== currentUser.uid);
-            if (!otherParticipantId) return;
-
-            const userDoc = await db.collection('users').doc(otherParticipantId).get();
-            if (!userDoc.exists) return; // Si el otro usuario fue borrado
+            const otherId = chat.participants.find(id => id !== currentUser.uid);
+            if (!otherId) return;
+            const userDoc = await getDoc(doc(db, 'users', otherId));
+            if (!userDoc.exists()) return;
             const userData = userDoc.data();
-
             const chatItem = document.createElement('li');
             chatItem.className = 'chat-item';
-            chatItem.dataset.chatId = chat.id;
-            
-            chatItem.innerHTML = `
-                <div class="avatar">${userData.name.charAt(0).toUpperCase()}</div>
-                <div class="chat-info">
-                    <div class="chat-name">${userData.name}</div>
-                    <div class="last-message">${chat.lastMessage || 'Inicia la conversación'}</div>
-                </div>
-                <div class="chat-meta">
-                    <div class="chat-timestamp">${formatTimestamp(chat.lastUpdated)}</div>
-                    <button class="delete-chat" onclick="deleteChat(event, '${chat.id}')">🗑️</button>
-                </div>
-            `;
+            chatItem.innerHTML = `<div class="avatar">${userData.name.charAt(0).toUpperCase()}</div><div class="chat-info"><div class="chat-name">${userData.name}</div><div class="last-message">${chat.lastMessage || '...'}</div></div><div class="chat-meta"><div class="chat-timestamp">${formatTimestamp(chat.lastUpdated)}</div><button class="delete-chat" data-chat-id="${chat.id}">🗑️</button></div>`;
             chatList.appendChild(chatItem);
-
-            chatItem.addEventListener('click', () => openChat(chat.id, otherParticipantId, userData.name));
+            chatItem.addEventListener('click', () => openChat(chat.id, otherId, userData.name));
         }
-        
+
         async function startNewChat() {
-            const otherUserId = prompt("Ingresa el ID del usuario con quien quieres chatear:");
-            if (!otherUserId || otherUserId.trim() === '' || otherUserId === currentUser.uid) {
-                if(otherUserId === currentUser.uid) alert("No puedes chatear contigo mismo.");
-                return;
-            }
-
+            const otherUserId = prompt("Ingresa el ID del usuario para chatear:");
+            if (!otherUserId || otherUserId.trim() === '' || otherUserId === currentUser.uid) return;
             try {
-                const userDoc = await db.collection('users').doc(otherUserId).get();
-                if (!userDoc.exists) {
-                    alert("Usuario no encontrado.");
-                    return;
-                }
-                
-                // MEJORA: Crear un ID de chat predecible para chats 1 a 1
+                const userDoc = await getDoc(doc(db, 'users', otherUserId));
+                if (!userDoc.exists()) { alert("Usuario no encontrado."); return; }
                 const chatId = [currentUser.uid, otherUserId].sort().join('_');
-                const chatRef = db.collection('chats').doc(chatId);
-                const chatDoc = await chatRef.get();
-
-                if (!chatDoc.exists) {
-                    // Crear chat si no existe
-                    await chatRef.set({
-                        participants: [currentUser.uid, otherUserId],
-                        lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
-                        lastMessage: '',
-                        typing: {} // NUEVO: para el indicador de "escribiendo..."
-                    });
+                const chatRef = doc(db, 'chats', chatId);
+                const chatDoc = await getDoc(chatRef);
+                if (!chatDoc.exists()) {
+                    await setDoc(chatRef, { participants: [currentUser.uid, otherUserId], lastUpdated: serverTimestamp(), lastMessage: '', typing: {} });
                 }
-                
                 openChat(chatId, otherUserId, userDoc.data().name);
-
-            } catch (error) {
-                console.error("Error al iniciar chat:", error);
-                alert("Ocurrió un error al iniciar el chat.");
-            }
+            } catch (error) { console.error("Error al iniciar chat:", error); }
         }
 
         function openChat(chatId, otherUserId, otherUserName) {
-            currentChatId = chatId;
             mainContent.style.display = 'none';
             chatScreen.style.display = 'flex';
-            
             document.getElementById('currentChatName').textContent = otherUserName;
             document.getElementById('currentChatAvatar').textContent = otherUserName.charAt(0).toUpperCase();
-            
             loadMessages(chatId);
-
-            // NUEVO: Escuchar estado online del otro usuario
-            const onlineStatusEl = document.getElementById('onlineStatus');
-            const typingIndicatorEl = document.getElementById('typingIndicator');
-
-            unsubscribePresenceListener = db.collection('users').doc(otherUserId)
-                .onSnapshot(doc => {
-                    const userData = doc.data();
-                    if (userData && userData.status === 'online') {
-                        onlineStatusEl.textContent = 'En línea';
-                    } else {
-                        onlineStatusEl.textContent = userData.lastSeen ? `Últ. vez ${formatTimestamp(userData.lastSeen)}` : 'Desconectado';
-                    }
-                });
-
-            // NUEVO: Escuchar indicador de "escribiendo..."
-            unsubscribeChatListener = db.collection('chats').doc(chatId)
-                .onSnapshot(doc => {
-                    const chatData = doc.data();
-                    if (chatData.typing && chatData.typing[otherUserId]) {
-                        typingIndicatorEl.style.display = 'block';
-                    } else {
-                        typingIndicatorEl.style.display = 'none';
-                    }
-                });
+            unsubscribePresenceListener = onSnapshot(doc(db, 'users', otherUserId), userDoc => {
+                const userData = userDoc.data();
+                const statusEl = document.getElementById('onlineStatus');
+                if (userData?.status === 'online') { statusEl.textContent = 'En línea'; } 
+                else { statusEl.textContent = userData.lastSeen ? `Últ. vez ${formatTimestamp(userData.lastSeen)}` : 'Desconectado'; }
+            });
+            unsubscribeChatListener = onSnapshot(doc(db, 'chats', chatId), chatDoc => {
+                const chatData = chatDoc.data();
+                document.getElementById('typingIndicator').style.display = (chatData?.typing && chatData.typing[otherUserId]) ? 'block' : 'none';
+            });
         }
-        
-        function deleteChat(event, chatId) {
-            event.stopPropagation(); // Evita que se abra el chat al hacer clic en el bote
-            if (confirm("¿Estás seguro de que quieres eliminar este chat? Esta acción no se puede deshacer.")) {
-                // Para una eliminación completa, necesitarías una Cloud Function para borrar la subcolección de mensajes.
-                // Aquí solo borraremos el documento del chat, que lo ocultará de la lista.
-                db.collection('chats').doc(chatId).delete()
-                  .then(() => console.log("Chat eliminado"))
-                  .catch(error => console.error("Error al eliminar chat:", error));
+
+        function deleteChat(chatId) {
+            if (confirm("¿Estás seguro de que quieres eliminar este chat?")) {
+                deleteDoc(doc(db, 'chats', chatId));
             }
         }
 
-        // --- LÓGICA DE MENSAJES ---
-
         function loadMessages(chatId) {
-            messagesContainer.innerHTML = ''; // Limpiar mensajes anteriores
-            db.collection('chats').doc(chatId).collection('messages')
-              .orderBy('timestamp', 'asc')
-              .onSnapshot(snapshot => {
-                  snapshot.docChanges().forEach(change => {
-                      if (change.type === 'added') {
-                          displayMessage(change.doc.data());
-                      }
-                  });
-                  // Scroll al último mensaje
-                  messagesContainer.scrollTop = messagesContainer.scrollHeight;
-              });
+            const messagesContainer = document.getElementById('messagesContainer');
+            messagesContainer.innerHTML = '';
+            const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
+            onSnapshot(q, snapshot => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type === 'added') displayMessage(change.doc.data());
+                });
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            });
         }
 
         function displayMessage(message) {
-            const messageEl = document.createElement('div');
-            const isSent = message.senderId === currentUser.uid;
-            messageEl.className = `message ${isSent ? 'sent' : 'received'}`;
-            messageEl.innerHTML = `
-                ${message.text}
-                <span class="message-time">${formatTime(message.timestamp)}</span>
-            `;
-            messagesContainer.appendChild(messageEl);
+            const messagesContainer = document.getElementById('messagesContainer');
+            const el = document.createElement('div');
+            el.className = `message ${message.senderId === currentUser.uid ? 'sent' : 'received'}`;
+            el.innerHTML = `${message.text}<span class="message-time">${formatTime(message.timestamp)}</span>`;
+            messagesContainer.appendChild(el);
         }
-        
+
         async function sendMessage() {
-            const messageText = messageInput.value.trim();
-            if (messageText === '' || !currentChatId) return;
-
-            const message = {
-                text: messageText,
-                senderId: currentUser.uid,
-                timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            };
-
+            const text = messageInput.value.trim();
+            if (text === '' || !chatScreen.dataset.chatId) return;
             messageInput.value = '';
-            setTyping(false); // Dejar de mostrar "escribiendo"
-
-            // Añadir mensaje a subcolección
-            await db.collection('chats').doc(currentChatId).collection('messages').add(message);
-            
-            // Actualizar el documento principal del chat
-            await db.collection('chats').doc(currentChatId).update({
-                lastMessage: messageText,
-                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-            });
+            setTyping(false);
+            await addDoc(collection(db, 'chats', chatScreen.dataset.chatId, 'messages'), { text, senderId: currentUser.uid, timestamp: serverTimestamp() });
+            await updateDoc(doc(db, 'chats', chatScreen.dataset.chatId), { lastMessage: text, lastUpdated: serverTimestamp() });
         }
-        
-        // NUEVO: Lógica del indicador "escribiendo..."
+
         function setTyping(isTyping) {
-            if (!currentChatId) return;
-            const typingUpdate = {};
-            typingUpdate[`typing.${currentUser.uid}`] = isTyping;
-            db.collection('chats').doc(currentChatId).update(typingUpdate);
+            if (!chatScreen.dataset.chatId) return;
+            const update = {};
+            update[`typing.${currentUser.uid}`] = isTyping;
+            updateDoc(doc(db, 'chats', chatScreen.dataset.chatId), update);
         }
-
-        // --- PERFIL DE USUARIO ---
         
         async function updateProfile() {
             const name = document.getElementById('profileName').value.trim();
             const status = document.getElementById('profileStatus').value.trim();
-
             if (name) {
                 try {
-                    await db.collection('users').doc(currentUser.uid).update({
-                        name: name,
-                        statusText: status,
-                    });
-                    alert("Perfil actualizado correctamente.");
+                    await updateDoc(doc(db, 'users', currentUser.uid), { name, statusText: status });
+                    alert("Perfil actualizado.");
                     showScreen('chats');
-                } catch (error) {
-                    console.error("Error al actualizar perfil:", error);
-                    alert("No se pudo actualizar el perfil.");
-                }
-            } else {
-                alert("El nombre no puede estar vacío.");
-            }
+                } catch (error) { console.error("Error al actualizar perfil:", error); }
+            } else { alert("El nombre no puede estar vacío."); }
         }
-        
-        // --- FUNCIONES AUXILIARES ---
 
         function formatTime(timestamp) {
-            if (!timestamp || !timestamp.toDate) return '';
-            return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            return (timestamp?.toDate())?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '';
         }
-        
+
         function formatTimestamp(timestamp) {
-            if (!timestamp || !timestamp.toDate) return '';
+            if (!timestamp?.toDate) return '';
             const date = timestamp.toDate();
             const now = new Date();
-            const diff = now.getTime() - date.getTime();
-            const diffDays = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-            if (diffDays === 0) {
-                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            }
-            if (diffDays === 1) {
-                return 'Ayer';
-            }
+            const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            if (date >= startOfToday) return formatTime(timestamp);
+            if (date >= new Date(startOfToday.setDate(startOfToday.getDate() - 1))) return 'Ayer';
             return date.toLocaleDateString();
         }
-        
-        // --- EVENT LISTENERS ---
 
-        document.getElementById('loginButton').addEventListener('click', login);
+        // --- Event Listeners ---
+        document.getElementById('registerButton').addEventListener('click', registerUser);
+        document.getElementById('loginButton').addEventListener('click', loginUser);
+        document.getElementById('logoutButton').addEventListener('click', logoutUser);
+        document.getElementById('showRegister').addEventListener('click', () => { registerForm.style.display = 'block'; loginForm.style.display = 'none'; authError.textContent = ''; });
+        document.getElementById('showLogin').addEventListener('click', () => { loginForm.style.display = 'block'; registerForm.style.display = 'none'; authError.textContent = ''; });
+        
         document.getElementById('newChatBtn').addEventListener('click', startNewChat);
         document.getElementById('backBtn').addEventListener('click', goBackToChats);
         document.getElementById('sendBtn').addEventListener('click', sendMessage);
         document.getElementById('navChats').addEventListener('click', () => showScreen('chats'));
         document.getElementById('navProfile').addEventListener('click', () => showScreen('profile'));
         document.getElementById('saveProfileBtn').addEventListener('click', updateProfile);
-        
-        messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendMessage();
-        });
-        
-        // Event listeners para "escribiendo..."
-        messageInput.addEventListener('input', () => {
-            clearTimeout(typingTimeout);
-            setTyping(true);
-            typingTimeout = setTimeout(() => {
-                setTyping(false);
-            }, 2000); // Se considera que dejó de escribir tras 2 segundos
-        });
 
-        document.getElementById('currentUserId').addEventListener('click', (e) => {
-            navigator.clipboard.writeText(currentUser.uid).then(() => {
-                alert('ID copiado al portapapeles!');
-            });
-        });
+        messageInput.addEventListener('keypress', e => { if (e.key === 'Enter') { e.preventDefault(); sendMessage(); } });
+        messageInput.addEventListener('input', () => { clearTimeout(typingTimeout); setTyping(true); typingTimeout = setTimeout(() => setTyping(false), 2000); });
+        document.getElementById('currentUserId').addEventListener('click', () => navigator.clipboard.writeText(currentUser.uid).then(() => alert('ID copiado!')));
 
+        chatList.addEventListener('click', e => {
+            if (e.target.classList.contains('delete-chat')) {
+                e.stopPropagation();
+                deleteChat(e.target.dataset.chatId);
+            }
+        });
     </script>
 </body>
 </html>
