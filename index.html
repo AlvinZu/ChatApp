@@ -271,7 +271,7 @@
         
         async function setupAppForUser() {
             const userDocRef = doc(db, 'users', currentUser.uid);
-            await updateDoc(userDocRef, { status: 'online', lastSeen: serverTimestamp() });
+            await setDoc(userDocRef, { status: 'online', lastSeen: serverTimestamp() }, { merge: true });
             updatePresence();
             
             const userDoc = await getDoc(userDocRef);
