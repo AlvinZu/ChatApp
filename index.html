@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatApp Mejorado</title>
+  
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  
+    <style>
+        /* --- ESTILOS GENERALES (SIN CAMBIOS) --- */
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f5f5f5; height: 100vh; display: flex; justify-content: center; align-items: center; }
+        .app-container { width: 100%; max-width: 400px; height: 90vh; background-color: white; border-radius: 12px; overflow: hidden; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); display: flex; flex-direction: column; }
+
+        /* --- PANTALLA DE LOGIN --- */
+        .login-screen { display: flex; flex-direction: column; padding: 40px 20px; justify-content: center; align-items: center; height: 100%; text-align: center; }
+        .login-form { width: 100%; max-width: 300px; margin-top: 20px; }
+        .login-form input { width: 100%; margin-bottom: 16px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; }
+        .login-button { background-color: #128C7E; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; width: 100%; font-size: 16px; }
+
+        /* --- ENCABEZADOS --- */
+        .header { background-color: #128C7E; color: white; padding: 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .chat-header { background-color: #128C7E; color: white; padding: 12px 16px; display: flex; align-items: center; flex-shrink: 0; }
+        .back-button { margin-right: 12px; cursor: pointer; font-size: 24px; }
+        .user-id-display { font-size: 10px; color: #a3e9e1; margin-top: 2px; cursor: pointer; }
+        .new-chat-button { background: none; border: none; color: white; font-size: 30px; cursor: pointer; line-height: 1; }
+
+        /* --- LISTA DE CHATS --- */
+        .content { flex: 1; overflow-y: auto; }
+        .chat-list { list-style: none; }
+        .chat-item { padding: 12px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; cursor: pointer; }
+        .chat-item:hover { background-color: #f9f9f9; }
+        .avatar { width: 50px; height: 50px; border-radius: 50%; background-color: #ddd; margin-right: 12px; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 20px; flex-shrink: 0; }
+        .chat-info { flex: 1; overflow: hidden; }
+        .chat-name { font-weight: bold; margin-bottom: 4px; }
+        .last-message { color: #666; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .chat-meta { text-align: right; }
+        .chat-timestamp { font-size: 12px; color: #999; }
+        .delete-chat { color: #ff4d4d; background: none; border: none; cursor: pointer; padding: 5px; font-size: 16px; }
+
+        /* --- PANTALLA DE CHAT INDIVIDUAL --- */
+        .chat-screen { display: none; flex-direction: column; height: 100%; }
+        .chat-header-info { display: flex; flex-direction: column; }
+        .online-status { font-size: 12px; color: #d1fff8; }
+        .typing-indicator { font-size: 12px; color: #d1fff8; font-style: italic; display: none; }
+        .messages-container { flex: 1; overflow-y: auto; padding: 16px; background-color: #e5ddd5; }
+        .message { max-width: 80%; width: fit-content; padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; position: relative; line-height: 1.4; }
+        .message.sent { background-color: #DCF8C6; margin-left: auto; }
+        .message.received { background-color: white; margin-right: auto; }
+        .message-time { display: block; font-size: 10px; color: #999; text-align: right; margin-top: 4px; }
+        .message-input-container { display: flex; padding: 8px; background-color: #f0f0f0; flex-shrink: 0; }
+        .message-input { flex: 1; padding: 10px 16px; border: none; border-radius: 20px; margin-right: 8px; }
+        .send-button { background-color: #128C7E; color: white; border: none; border-radius: 50%; width: 44px; height: 44px; cursor: pointer; font-size: 20px; }
+
+        /* --- PANTALLA DE PERFIL Y NAVEGACIÓN --- */
+        .profile-screen { display: none; padding: 20px; }
+        .profile-form { display: flex; flex-direction: column; }
+        .profile-form input { margin-bottom: 16px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; }
+        .save-button { background-color: #128C7E; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; }
+        .bottom-nav { display: flex; background-color: #f9f9f9; border-top: 1px solid #e0e0e0; flex-shrink: 0; }
+        .nav-item { flex: 1; text-align: center; padding: 16px; cursor: pointer; color: #666; }
+        .nav-item.active { color: #128C7E; border-top: 2px solid #128C7E; }
+    </style>
+</head>
+  
+<body>
+    <div class="app-container">
+        <div class="login-screen" id="loginScreen">
+            <h2>Bienvenido a ChatApp</h2>
+            <p style="margin: 10px 0;">Ingresa tu nombre para comenzar.</p>
+            <div class="login-form">
+                <input type="text" id="userNameInput" placeholder="Tu nombre">
+                <button class="login-button" id="loginButton">Ingresar</button>
+            </div>
+        </div>
+
+        <div id="mainContent" style="display: none; flex-direction: column; height: 100%;">
+            <div class="header">
+                <div>
+                    <h1>ChatApp</h1>
+                    <div class="user-id-display" id="currentUserId" title="Click para copiar tu ID"></div>
+                </div>
+                <button class="new-chat-button" id="newChatBtn" title="Iniciar nuevo chat">+</button>
+            </div>
+
+            <div class="content" id="contentArea">
+                <div id="chatsScreen">
+                    <ul class="chat-list" id="chatList"></ul>
+                </div>
+                <div class="profile-screen" id="profileScreen">
+                    <h2>Mi Perfil</h2>
+                    <div class="profile-form">
+                        <input type="text" id="profileName" placeholder="Tu nombre">
+                        <input type="text" id="profileStatus" placeholder="Tu estado">
+                        <button class="save-button" id="saveProfileBtn">Guardar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bottom-nav">
+                <div class="nav-item active" id="navChats">Chats</div>
+                <div class="nav-item" id="navProfile">Mi Perfil</div>
+            </div>
+        </div>
+
+        <div class="chat-screen" id="chatScreen">
+            <div class="chat-header">
+                <div class="back-button" id="backBtn">←</div>
+                <div class="avatar" id="currentChatAvatar"></div>
+                <div class="chat-header-info">
+                    <div id="currentChatName"></div>
+                    <div class="online-status" id="onlineStatus"></div>
+                    <div class="typing-indicator" id="typingIndicator">escribiendo...</div>
+                </div>
+            </div>
+            <div class="messages-container" id="messagesContainer"></div>
+            <div class="message-input-container">
+                <input type="text" class="message-input" id="messageInput" placeholder="Escribe un mensaje...">
+                <button class="send-button" id="sendBtn">→</button>
+            </div>
+        </div>
+    </div>
+
+    
+    
+    <script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+  apiKey: "AIzaSyBE6CYhaLokdTexZLH5zPJDmi-8a7KFbB0",
+  authDomain: "chatapp-7382f.firebaseapp.com",
+  projectId: "chatapp-7382f",
+  storageBucket: "chatapp-7382f.firebasestorage.app",
+  messagingSenderId: "27141261584",
+  appId: "1:27141261584:web:ecefba4affa1d3122bfd95",
+  measurementId: "G-WTQPXV8B7J"
+};
+        
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        // --- Variables Globales y Selectores del DOM ---
+        let currentUser = null;
+        let currentChatId = null;
+        let unsubscribeChatListener = null; // Para detener el listener de mensajes
+        let unsubscribePresenceListener = null; // Para el estado online
+        let typingTimeout = null;
+
+        // Caché de elementos del DOM
+        const loginScreen = document.getElementById('loginScreen');
+        const mainContent = document.getElementById('mainContent');
+        const chatScreen = document.getElementById('chatScreen');
+        const chatList = document.getElementById('chatList');
+        const messagesContainer = document.getElementById('messagesContainer');
+        const messageInput = document.getElementById('messageInput');
+        const userNameInput = document.getElementById('userNameInput');
+        
+        // --- AUTENTICACIÓN Y ESTADO DEL USUARIO ---
+        
+        // Observador del estado de autenticación
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                // Usuario ha iniciado sesión
+                currentUser = user;
+                setupAppForUser();
+            } else {
+                // Usuario no ha iniciado sesión
+                showLoginScreen();
+            }
+        });
+
+        // Iniciar sesión anónimamente
+        async function login() {
+            const userName = userNameInput.value.trim();
+            if (!userName) {
+                alert('Por favor, ingresa tu nombre.');
+                return;
+            }
+
+            try {
+                const userCredential = await auth.signInAnonymously();
+                currentUser = userCredential.user;
+                
+                // Guardar o actualizar perfil del usuario
+                await db.collection('users').doc(currentUser.uid).set({
+                    name: userName,
+                    status: 'online',
+                    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                
+                setupAppForUser();
+            } catch (error) {
+                console.error("Error al iniciar sesión:", error);
+                alert("No se pudo iniciar sesión. Inténtalo de nuevo.");
+            }
+        }
+        
+        // Configurar la app después del login
+        async function setupAppForUser() {
+            updatePresence(); // Iniciar sistema de presencia
+            const userDoc = await db.collection('users').doc(currentUser.uid).get();
+            const userData = userDoc.data();
+            
+            document.getElementById('profileName').value = userData.name || '';
+            document.getElementById('profileStatus').value = userData.statusText || '';
+            document.getElementById('currentUserId').textContent = `Tu ID: ${currentUser.uid}`;
+
+            loginScreen.style.display = 'none';
+            chatScreen.style.display = 'none';
+            mainContent.style.display = 'flex';
+            
+            loadChats();
+        }
+        
+        function showLoginScreen() {
+            mainContent.style.display = 'none';
+            chatScreen.style.display = 'none';
+            loginScreen.style.display = 'flex';
+        }
+
+        // NUEVO: Sistema de Presencia (En Línea / Desconectado)
+        function updatePresence() {
+            const userStatusRef = db.collection('users').doc(currentUser.uid);
+            // Firestore no tiene un 'onDisconnect' nativo como Realtime Database.
+            // Una estrategia común es actualizar un timestamp periódicamente.
+            // O, más simple, marcar como 'online' al cargar y 'offline' al cerrar.
+            
+            window.addEventListener('beforeunload', () => {
+                userStatusRef.update({
+                    status: 'offline',
+                    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            });
+        }
+        
+        // --- NAVEGACIÓN Y VISTAS ---
+
+        function showScreen(screen) {
+            const chatsScreen = document.getElementById('chatsScreen');
+            const profileScreen = document.getElementById('profileScreen');
+            const navChats = document.getElementById('navChats');
+            const navProfile = document.getElementById('navProfile');
+            
+            if (screen === 'chats') {
+                chatsScreen.style.display = 'block';
+                profileScreen.style.display = 'none';
+                navChats.classList.add('active');
+                navProfile.classList.remove('active');
+            } else if (screen === 'profile') {
+                chatsScreen.style.display = 'none';
+                profileScreen.style.display = 'block';
+                navChats.classList.remove('active');
+                navProfile.classList.add('active');
+            }
+        }
+
+        function goBackToChats() {
+            chatScreen.style.display = 'none';
+            mainContent.style.display = 'flex';
+            currentChatId = null;
+            // Detener listeners para ahorrar recursos
+            if (unsubscribeChatListener) unsubscribeChatListener();
+            if (unsubscribePresenceListener) unsubscribePresenceListener();
+        }
+
+        // --- LÓGICA DE CHATS ---
+
+        function loadChats() {
+            db.collection('chats')
+              .where('participants', 'array-contains', currentUser.uid)
+              .orderBy('lastUpdated', 'desc') // Ordenar por el más reciente
+              .onSnapshot(snapshot => {
+                  chatList.innerHTML = ''; // Limpiar lista para redibujar
+                  snapshot.forEach(doc => {
+                      const chat = { id: doc.id, ...doc.data() };
+                      displayChatItem(chat);
+                  });
+              });
+        }
+
+        async function displayChatItem(chat) {
+            const otherParticipantId = chat.participants.find(id => id !== currentUser.uid);
+            if (!otherParticipantId) return;
+
+            const userDoc = await db.collection('users').doc(otherParticipantId).get();
+            if (!userDoc.exists) return; // Si el otro usuario fue borrado
+            const userData = userDoc.data();
+
+            const chatItem = document.createElement('li');
+            chatItem.className = 'chat-item';
+            chatItem.dataset.chatId = chat.id;
+            
+            chatItem.innerHTML = `
+                <div class="avatar">${userData.name.charAt(0).toUpperCase()}</div>
+                <div class="chat-info">
+                    <div class="chat-name">${userData.name}</div>
+                    <div class="last-message">${chat.lastMessage || 'Inicia la conversación'}</div>
+                </div>
+                <div class="chat-meta">
+                    <div class="chat-timestamp">${formatTimestamp(chat.lastUpdated)}</div>
+                    <button class="delete-chat" onclick="deleteChat(event, '${chat.id}')">🗑️</button>
+                </div>
+            `;
+            chatList.appendChild(chatItem);
+
+            chatItem.addEventListener('click', () => openChat(chat.id, otherParticipantId, userData.name));
+        }
+        
+        async function startNewChat() {
+            const otherUserId = prompt("Ingresa el ID del usuario con quien quieres chatear:");
+            if (!otherUserId || otherUserId.trim() === '' || otherUserId === currentUser.uid) {
+                if(otherUserId === currentUser.uid) alert("No puedes chatear contigo mismo.");
+                return;
+            }
+
+            try {
+                const userDoc = await db.collection('users').doc(otherUserId).get();
+                if (!userDoc.exists) {
+                    alert("Usuario no encontrado.");
+                    return;
+                }
+                
+                // MEJORA: Crear un ID de chat predecible para chats 1 a 1
+                const chatId = [currentUser.uid, otherUserId].sort().join('_');
+                const chatRef = db.collection('chats').doc(chatId);
+                const chatDoc = await chatRef.get();
+
+                if (!chatDoc.exists) {
+                    // Crear chat si no existe
+                    await chatRef.set({
+                        participants: [currentUser.uid, otherUserId],
+                        lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                        lastMessage: '',
+                        typing: {} // NUEVO: para el indicador de "escribiendo..."
+                    });
+                }
+                
+                openChat(chatId, otherUserId, userDoc.data().name);
+
+            } catch (error) {
+                console.error("Error al iniciar chat:", error);
+                alert("Ocurrió un error al iniciar el chat.");
+            }
+        }
+
+        function openChat(chatId, otherUserId, otherUserName) {
+            currentChatId = chatId;
+            mainContent.style.display = 'none';
+            chatScreen.style.display = 'flex';
+            
+            document.getElementById('currentChatName').textContent = otherUserName;
+            document.getElementById('currentChatAvatar').textContent = otherUserName.charAt(0).toUpperCase();
+            
+            loadMessages(chatId);
+
+            // NUEVO: Escuchar estado online del otro usuario
+            const onlineStatusEl = document.getElementById('onlineStatus');
+            const typingIndicatorEl = document.getElementById('typingIndicator');
+
+            unsubscribePresenceListener = db.collection('users').doc(otherUserId)
+                .onSnapshot(doc => {
+                    const userData = doc.data();
+                    if (userData && userData.status === 'online') {
+                        onlineStatusEl.textContent = 'En línea';
+                    } else {
+                        onlineStatusEl.textContent = userData.lastSeen ? `Últ. vez ${formatTimestamp(userData.lastSeen)}` : 'Desconectado';
+                    }
+                });
+
+            // NUEVO: Escuchar indicador de "escribiendo..."
+            unsubscribeChatListener = db.collection('chats').doc(chatId)
+                .onSnapshot(doc => {
+                    const chatData = doc.data();
+                    if (chatData.typing && chatData.typing[otherUserId]) {
+                        typingIndicatorEl.style.display = 'block';
+                    } else {
+                        typingIndicatorEl.style.display = 'none';
+                    }
+                });
+        }
+        
+        function deleteChat(event, chatId) {
+            event.stopPropagation(); // Evita que se abra el chat al hacer clic en el bote
+            if (confirm("¿Estás seguro de que quieres eliminar este chat? Esta acción no se puede deshacer.")) {
+                // Para una eliminación completa, necesitarías una Cloud Function para borrar la subcolección de mensajes.
+                // Aquí solo borraremos el documento del chat, que lo ocultará de la lista.
+                db.collection('chats').doc(chatId).delete()
+                  .then(() => console.log("Chat eliminado"))
+                  .catch(error => console.error("Error al eliminar chat:", error));
+            }
+        }
+
+        // --- LÓGICA DE MENSAJES ---
+
+        function loadMessages(chatId) {
+            messagesContainer.innerHTML = ''; // Limpiar mensajes anteriores
+            db.collection('chats').doc(chatId).collection('messages')
+              .orderBy('timestamp', 'asc')
+              .onSnapshot(snapshot => {
+                  snapshot.docChanges().forEach(change => {
+                      if (change.type === 'added') {
+                          displayMessage(change.doc.data());
+                      }
+                  });
+                  // Scroll al último mensaje
+                  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+              });
+        }
+
+        function displayMessage(message) {
+            const messageEl = document.createElement('div');
+            const isSent = message.senderId === currentUser.uid;
+            messageEl.className = `message ${isSent ? 'sent' : 'received'}`;
+            messageEl.innerHTML = `
+                ${message.text}
+                <span class="message-time">${formatTime(message.timestamp)}</span>
+            `;
+            messagesContainer.appendChild(messageEl);
+        }
+        
+        async function sendMessage() {
+            const messageText = messageInput.value.trim();
+            if (messageText === '' || !currentChatId) return;
+
+            const message = {
+                text: messageText,
+                senderId: currentUser.uid,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            };
+
+            messageInput.value = '';
+            setTyping(false); // Dejar de mostrar "escribiendo"
+
+            // Añadir mensaje a subcolección
+            await db.collection('chats').doc(currentChatId).collection('messages').add(message);
+            
+            // Actualizar el documento principal del chat
+            await db.collection('chats').doc(currentChatId).update({
+                lastMessage: messageText,
+                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
+        
+        // NUEVO: Lógica del indicador "escribiendo..."
+        function setTyping(isTyping) {
+            if (!currentChatId) return;
+            const typingUpdate = {};
+            typingUpdate[`typing.${currentUser.uid}`] = isTyping;
+            db.collection('chats').doc(currentChatId).update(typingUpdate);
+        }
+
+        // --- PERFIL DE USUARIO ---
+        
+        async function updateProfile() {
+            const name = document.getElementById('profileName').value.trim();
+            const status = document.getElementById('profileStatus').value.trim();
+
+            if (name) {
+                try {
+                    await db.collection('users').doc(currentUser.uid).update({
+                        name: name,
+                        statusText: status,
+                    });
+                    alert("Perfil actualizado correctamente.");
+                    showScreen('chats');
+                } catch (error) {
+                    console.error("Error al actualizar perfil:", error);
+                    alert("No se pudo actualizar el perfil.");
+                }
+            } else {
+                alert("El nombre no puede estar vacío.");
+            }
+        }
+        
+        // --- FUNCIONES AUXILIARES ---
+
+        function formatTime(timestamp) {
+            if (!timestamp || !timestamp.toDate) return '';
+            return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        
+        function formatTimestamp(timestamp) {
+            if (!timestamp || !timestamp.toDate) return '';
+            const date = timestamp.toDate();
+            const now = new Date();
+            const diff = now.getTime() - date.getTime();
+            const diffDays = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+            if (diffDays === 0) {
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+            if (diffDays === 1) {
+                return 'Ayer';
+            }
+            return date.toLocaleDateString();
+        }
+        
+        // --- EVENT LISTENERS ---
+
+        document.getElementById('loginButton').addEventListener('click', login);
+        document.getElementById('newChatBtn').addEventListener('click', startNewChat);
+        document.getElementById('backBtn').addEventListener('click', goBackToChats);
+        document.getElementById('sendBtn').addEventListener('click', sendMessage);
+        document.getElementById('navChats').addEventListener('click', () => showScreen('chats'));
+        document.getElementById('navProfile').addEventListener('click', () => showScreen('profile'));
+        document.getElementById('saveProfileBtn').addEventListener('click', updateProfile);
+        
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        
+        // Event listeners para "escribiendo..."
+        messageInput.addEventListener('input', () => {
+            clearTimeout(typingTimeout);
+            setTyping(true);
+            typingTimeout = setTimeout(() => {
+                setTyping(false);
+            }, 2000); // Se considera que dejó de escribir tras 2 segundos
+        });
+
+        document.getElementById('currentUserId').addEventListener('click', (e) => {
+            navigator.clipboard.writeText(currentUser.uid).then(() => {
+                alert('ID copiado al portapapeles!');
+            });
+        });
+
+    </script>
+</body>
+</html>
