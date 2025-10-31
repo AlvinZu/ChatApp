@@ -18,6 +18,39 @@
   
     <style>
       
+      /* Contenedor para el input y el picker */
+.input-area-container {
+    position: relative; /* Clave para posicionar el picker */
+    flex-shrink: 0; /* Evita que se encoja */
+}
+
+/* Botón de Emoji */
+.emoji-button {
+    background-color: transparent;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #555;
+    padding: 0 12px 0 8px; /* Ajuste de padding */
+}
+
+/* Estilos del Picker */
+emoji-picker {
+    width: 100%; /* Ocupa todo el ancho */
+    height: 300px; /* Altura fija para el panel */
+    position: absolute;
+    bottom: 100%; /* Lo pone justo encima del contenedor del input */
+    left: 0;
+    z-index: 10;
+    --shadow: 0 5px 15px rgba(0,0,0,0.2);
+    --border-radius: 8px;
+}
+
+/* Clase para mostrar/ocultar el picker */
+.emoji-picker-hidden {
+    display: none;
+}
+      
       .chat-meta .unread-dot {
     width: 12px;
     height: 12px;
@@ -161,21 +194,28 @@
                 </div>
             </div>
             <div class="messages-container" id="messagesContainer"></div>
-            <div class="message-input-container">
-                <input type="text" class="message-input" id="messageInput" placeholder="Escribe un mensaje...">
-                <button class="send-button" id="sendBtn">→</button>
+            
+            <div class="input-area-container">
+                <emoji-picker class="emoji-picker-hidden"></emoji-picker> 
+                
+                <div class="message-input-container">
+                    <button class="emoji-button" id="emojiBtn">😀</button>
+                    
+                    <input type="text" class="message-input" id="messageInput" placeholder="Escribe un mensaje...">
+                    <button class="send-button" id="sendBtn">→</button>
+                </div>
             </div>
         </div>
     </div>
     
     <script type="module">
-    // 1. IMPORTACIONES (Completas)
+    // 1. IMPORTACIONES (Añadimos la del emoji-picker)
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
     import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
     import { getFirestore, collection, doc, setDoc, getDoc, serverTimestamp, query, where, orderBy, onSnapshot, updateDoc, deleteDoc, addDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-storage.js";
+    import 'https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js'; // NUEVA IMPORTACIÓN
 
-    // 2. CONFIGURACIÓN E INICIALIZACIÓN (Completas)
+    // 2. CONFIGURACIÓN E INICIALIZACIÓN (Limpia)
     const firebaseConfig = {
         apiKey: "AIzaSyBE6CYhaLokdTexZLH5zPJDmi-8a7KFbB0",
         authDomain: "chatapp-7382f.firebaseapp.com",
@@ -189,7 +229,7 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    const storage = getStorage(app); 
+    // (Ya no inicializamos 'storage')
 
     // --- Variables Globales y Selectores del DOM ---
     let currentUser = null;
@@ -206,6 +246,8 @@
     const registerForm = document.getElementById('registerForm');
     const chatList = document.getElementById('chatList');
     const messageInput = document.getElementById('messageInput');
+    const emojiPicker = document.querySelector('emoji-picker'); // NUEVO
+    const emojiBtn = document.getElementById('emojiBtn'); // NUEVO
 
     // --- Observador de Autenticación ---
     onAuthStateChanged(auth, user => {
@@ -218,7 +260,7 @@
         }
     });
 
-    // --- Funciones de Autenticación y Perfil ---
+    // --- Funciones de Autenticación y Perfil (Sin cambios) ---
     async function registerUser() {
         const name = document.getElementById('registerName').value.trim();
         const email = document.getElementById('registerEmail').value.trim();
@@ -228,33 +270,26 @@
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
-            // **MODIFICADO**: Ya no guardamos 'status: online'
             await setDoc(doc(db, 'users', user.uid), {
                 name: name, 
                 email: email, 
-                lastSeen: serverTimestamp(), // Solo guardamos la última vez visto
+                lastSeen: serverTimestamp(), 
                 statusText: '¡Hola! Estoy usando ChatApp.'
             });
         } catch (error) { handleAuthError(error); }
     }
-
     async function loginUser() {
-        // ... (esta función no cambia) ...
         const email = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value.trim();
         authError.textContent = '';
         if (!email || !password) { authError.textContent = 'Todos los campos son obligatorios.'; return; }
         try { await signInWithEmailAndPassword(auth, email, password); } catch (error) { handleAuthError(error); }
     }
-
     function logoutUser() { 
-        // **NUEVO**: Al cerrar sesión, actualizamos por última vez
-        updateHeartbeat();
+        updateHeartbeat(false); // Le decimos al latido que pare
         signOut(auth); 
     }
-
     function handleAuthError(error) {
-        // ... (esta función no cambia) ...
         console.error("Error de autenticación:", error.code);
         switch (error.code) {
             case 'auth/email-already-in-use': authError.textContent = 'Este correo electrónico ya está registrado.'; break;
@@ -265,7 +300,6 @@
         }
     }
     async function updateProfile() {
-        // ... (esta función no cambia) ...
         const name = document.getElementById('profileName').value.trim();
         const status = document.getElementById('profileStatus').value.trim();
         if (name) {
@@ -284,12 +318,12 @@
         authScreen.style.display = 'flex';
     }
 
+    let heartbeatInterval = null; // Variable para guardar el intervalo
     async function setupAppForUser() {
-        // **MODIFICADO**: Iniciamos el "latido" (heartbeat)
+        if (heartbeatInterval) clearInterval(heartbeatInterval); // Limpia el latido anterior si existe
         updateHeartbeat(); // Llama una vez al inicio
-        setInterval(updateHeartbeat, 30000); // Y luego cada 30 segundos
+        heartbeatInterval = setInterval(updateHeartbeat, 30000); // Y luego cada 30 segundos
 
-        // El resto de la función es igual
         const userDocRef = doc(db, 'users', currentUser.uid);
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
@@ -304,32 +338,34 @@
         loadChats();
     }
 
-    // --- NUEVA FUNCIÓN DE "LATIDO" (HEARTBEAT) ---
-    function updateHeartbeat() {
-        if (!currentUser) return; // Si no hay usuario, no hace nada
+    // --- FUNCIÓN DE "LATIDO" (HEARTBEAT) ---
+    function updateHeartbeat(isOnline = true) {
+        if (!currentUser) {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            return; 
+        }
         const userDocRef = doc(db, 'users', currentUser.uid);
-        // Simplemente actualiza la 'lastSeen' con la hora actual
         try {
             updateDoc(userDocRef, { 
                 lastSeen: serverTimestamp() 
             });
         } catch (e) {
-            console.log("No se pudo actualizar el heartbeat, probablemente el usuario está offline.");
+            console.log("No se pudo actualizar el heartbeat.");
+        }
+        // Si el usuario cierra sesión (isOnline = false), detenemos el intervalo
+        if (!isOnline && heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
         }
     }
 
-    // --- La función 'updatePresence' (con 'beforeunload') ya no es necesaria y se puede borrar ---
-
     function showScreen(screen) {
-        // ... (esta función no cambia) ...
         document.getElementById('chatsScreen').style.display = (screen === 'chats') ? 'block' : 'none';
         document.getElementById('profileScreen').style.display = (screen === 'profile') ? 'block' : 'none';
         document.getElementById('navChats').classList.toggle('active', screen === 'chats');
         document.getElementById('navProfile').classList.toggle('active', screen === 'profile');
     }
-
     function goBackToChats() {
-        // ... (esta función no cambia) ...
         chatScreen.style.display = 'none';
         mainContent.style.display = 'flex';
         currentChatId = null; 
@@ -339,7 +375,6 @@
 
     // --- LÓGICA PRINCIPAL DEL CHAT ---
     function loadChats() {
-        // ... (esta función no cambia) ...
         const chatsRef = collection(db, 'chats');
         const q = query(chatsRef, where('participants', 'array-contains', currentUser.uid), orderBy('lastUpdated', 'desc'));
         onSnapshot(q, snapshot => {
@@ -349,7 +384,6 @@
     }
 
     async function displayChatItem(chat) {
-        // ... (esta función no cambia) ...
         const otherId = chat.participants.find(id => id !== currentUser.uid);
         if (!otherId) return;
         const userDoc = await getDoc(doc(db, 'users', otherId));
@@ -380,7 +414,6 @@
     }
 
     async function startNewChat() {
-        // ... (esta función no cambia) ...
         const otherUserId = prompt("Ingresa el ID del usuario para chatear:");
         if (!otherUserId || otherUserId.trim() === '' || otherUserId === currentUser.uid) return;
         try {
@@ -418,25 +451,20 @@
             [`isUnread.${currentUser.uid}`]: false
         });
 
-        // **MODIFICADO**: Lógica de "En línea" y "Escribiendo..."
         unsubscribePresenceListener = onSnapshot(doc(db, 'users', otherUserId), userDoc => {
             const userData = userDoc.data();
             const statusEl = document.getElementById('onlineStatus');
-            
-            // --- ESTA ES LA NUEVA LÓGICA ---
             if (userData && userData.lastSeen) {
                 const lastSeenDate = userData.lastSeen.toDate();
                 const now = new Date();
-                const diffMinutes = (now.getTime() - lastSeenDate.getTime()) / 60000; // Diferencia en minutos
-
-                if (diffMinutes < 1) { // Menos de 1 minuto = En línea
+                const diffMinutes = (now.getTime() - lastSeenDate.getTime()) / 60000;
+                if (diffMinutes < 1) { 
                     statusEl.textContent = 'En línea';
                 } else {
-                    // Reutilizamos la función formatTimestamp que ya es inteligente
                     statusEl.textContent = `Últ. vez ${formatTimestamp(userData.lastSeen)}`;
                 }
             } else {
-                statusEl.textContent = 'Desconectado'; // Por si acaso
+                statusEl.textContent = 'Desconectado';
             }
         });
         
@@ -447,14 +475,12 @@
     }
 
     function deleteChat(chatId) {
-        // ... (esta función no cambia) ...
         if (confirm("¿Estás seguro de que quieres eliminar este chat?")) {
             deleteDoc(doc(db, 'chats', chatId));
         }
     }
 
     function loadMessages(chatId) {
-        // ... (esta función no cambia) ...
         const messagesContainer = document.getElementById('messagesContainer');
         messagesContainer.innerHTML = '';
         const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
@@ -466,22 +492,21 @@
         });
     }
 
+    // MODIFICADO: displayMessage (limpiado de código de imagen)
     function displayMessage(message) {
-        // ... (esta función no cambia) ...
         const messagesContainer = document.getElementById('messagesContainer');
         const el = document.createElement('div');
         const isSent = message.senderId === currentUser.uid;
         el.className = `message ${isSent ? 'sent' : 'received'}`;
-        if (message.imageUrl) {
-            el.innerHTML = `<img src="${message.imageUrl}" alt="Imagen enviada" class="message-image"><span class="message-time">${formatTime(message.timestamp)}</span>`;
-        } else {
-            el.innerHTML = `${message.text}<span class="message-time">${formatTime(message.timestamp)}</span>`;
-        }
+        // Lógica de imagen eliminada
+        el.innerHTML = `
+            ${message.text}
+            <span class="message-time">${formatTime(message.timestamp)}</span>
+        `;
         messagesContainer.appendChild(el);
     }
 
     async function sendMessage() {
-        // ... (esta función no cambia) ...
         const text = messageInput.value.trim();
         if (text === '' || !chatScreen.dataset.chatId) return;
         const chatId = chatScreen.dataset.chatId;
@@ -499,57 +524,19 @@
         });
     }
 
-    // --- Funciones de envío de imágenes ---
-    async function sendImageMessage(imageUrl) {
-        // ... (esta función no cambia) ...
-        if (!imageUrl || !chatScreen.dataset.chatId) return;
-        const chatId = chatScreen.dataset.chatId;
-        const otherUserId = chatScreen.dataset.otherUser; 
-
-        const messageData = { imageUrl: imageUrl, senderId: currentUser.uid, timestamp: serverTimestamp() };
-        await addDoc(collection(db, 'chats', chatId, 'messages'), messageData);
-        
-        await updateDoc(doc(db, 'chats', chatId), { 
-            lastMessage: '📷 Imagen', 
-            lastUpdated: serverTimestamp(),
-            [`isUnread.${otherUserId}`]: true,
-            [`isUnread.${currentUser.uid}`]: false 
-        });
-    }
-    async function uploadImage(file) {
-        // ... (esta función no cambia) ...
-        if (!file || !chatScreen.dataset.chatId) return;
-        messageInput.placeholder = "Subiendo imagen...";
-        messageInput.disabled = true;
-        const filePath = `chat_images/${chatScreen.dataset.chatId}/${Date.now()}_${file.name}`;
-        const storageRef = ref(storage, filePath);
-        try {
-            const snapshot = await uploadBytes(storageRef, file);
-            const downloadURL = await getDownloadURL(snapshot.ref);
-            await sendImageMessage(downloadURL);
-        } catch (error) {
-            console.error("Error al subir la imagen:", error);
-            alert("No se pudo enviar la imagen.");
-        } finally {
-            messageInput.placeholder = "Escribe un mensaje...";
-            messageInput.disabled = false;
-        }
-    }
+    // (Funciones 'sendImageMessage' y 'uploadImage' eliminadas)
 
     // --- Otras funciones (tipeo, formato de fecha, etc.) ---
     function setTyping(isTyping) {
-        // ... (esta función no cambia) ...
         if (!chatScreen.dataset.chatId) return;
         const update = {};
         update[`typing.${currentUser.uid}`] = isTyping;
         updateDoc(doc(db, 'chats', chatScreen.dataset.chatId), update);
     }
     function formatTime(timestamp) {
-        // ... (esta función no cambia) ...
         return (timestamp?.toDate())?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || '';
     }
     function formatTimestamp(timestamp) {
-        // ... (esta función no cambia) ...
         if (!timestamp?.toDate) return '';
         const date = timestamp.toDate();
         const now = new Date();
@@ -560,7 +547,6 @@
     }
 
     // --- Event Listeners (completos) ---
-    // ... (sin cambios) ...
     document.getElementById('registerButton').addEventListener('click', registerUser);
     document.getElementById('loginButton').addEventListener('click', loginUser);
     document.getElementById('logoutButton').addEventListener('click', logoutUser);
@@ -585,16 +571,23 @@
         }
     });
 
-    // Este 'attachBtn' no estaba en tu HTML, lo comento por si acaso. Si lo tienes, descoméntalo.
-    /*
-    document.getElementById('attachBtn').addEventListener('click', () => {
-        document.getElementById('imageInput').click();
+    // --- NUEVOS LISTENERS PARA EMOJI ---
+    emojiBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Evita que el clic se propague
+        emojiPicker.classList.toggle('emoji-picker-hidden');
     });
-    document.getElementById('imageInput').addEventListener('change', (event) => {
-        const file = event.target.files[0];
-        if (file) { uploadImage(file); }
+
+    emojiPicker.addEventListener('emoji-click', event => {
+        messageInput.value += event.detail.emoji.unicode; // Añade el emoji al input
+        messageInput.focus(); // Devuelve el foco al input
     });
-    */
+
+    // Cierra el picker si haces clic en cualquier otro lado
+    document.addEventListener('click', (e) => {
+        if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
+            emojiPicker.classList.add('emoji-picker-hidden');
+        }
+    });
 </script>
 
     <script>
