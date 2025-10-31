@@ -18,6 +18,60 @@
   
     <style>
       
+      /* --- Estilos para Reacciones --- */
+
+/* El panel pop-up */
+#reactionPanel {
+    display: none; /* Oculto por defecto */
+    position: absolute;
+    background-color: white;
+    border: 1px solid #ddd;
+    border-radius: 20px;
+    padding: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 100;
+    transform: translate(-50%, -110%); /* Lo centra y pone arriba del clic */
+    transition: all 0.1s ease-out;
+}
+.reaction-button {
+    background: none;
+    border: none;
+    font-size: 22px;
+    padding: 6px;
+    cursor: pointer;
+    border-radius: 50%;
+}
+.reaction-button:hover {
+    background-color: #f0f0f0;
+}
+
+/* Contenedor para los emojis *debajo* del mensaje */
+.reactions-container {
+    display: flex;
+    gap: 4px;
+    margin-top: 6px;
+    /* Posicionamiento para burbujas 'sent' y 'received' */
+    position: absolute;
+    bottom: -10px; 
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    padding: 2px 4px;
+}
+
+/* Ajuste para las burbujas enviadas (derecha) */
+.message.sent .reactions-container {
+    right: 12px; 
+}
+/* Ajuste para las burbujas recibidas (izquierda) */
+.message.received .reactions-container {
+    left: 12px;
+}
+
+.reaction-emoji {
+    font-size: 14px;
+}
+      
       /* Contenedor para el input y el picker */
 .input-area-container {
     position: relative; /* Clave para posicionar el picker */
@@ -106,7 +160,7 @@ emoji-picker {
         .online-status { font-size: 12px; color: #d1fff8; }
         .typing-indicator { font-size: 12px; color: #d1fff8; font-style: italic; display: none; }
         .messages-container { flex: 1; overflow-y: auto; padding: 16px; background-color: #e5ddd5; }
-        .message { max-width: 80%; width: fit-content; padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; position: relative; line-height: 1.4; }
+        .message { max-width: 80%; width: fit-content; padding: 8px 12px; border-radius: 8px; margin-bottom: 25px; position: relative; line-height: 1.4; }
         .message.sent { background-color: #DCF8C6; margin-left: auto; }
         .message.received { background-color: white; margin-right: auto; }
         .message-time { display: block; font-size: 10px; color: #999; text-align: right; margin-top: 4px; }
@@ -207,15 +261,26 @@ emoji-picker {
             </div>
         </div>
     </div>
-    
+    <div id="reactionPanel">
+            <button class="reaction-button" data-emoji="👍">👍</button>
+            <button class="reaction-button" data-emoji="❤️">❤️</button>
+            <button class="reaction-button" data-emoji="😂">😂</button>
+            <button class="reaction-button" data-emoji="😮">😮</button>
+            <button class="reaction-button" data-emoji="😢">😢</button>
+            <button class="reaction-button" data-emoji="❌">❌</button>
+        </div>
     <script type="module">
-    // 1. IMPORTACIONES (Añadimos la del emoji-picker)
+    // 1. IMPORTACIONES (Añadimos 'deleteField' para poder quitar reacciones)
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
     import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
-    import { getFirestore, collection, doc, setDoc, getDoc, serverTimestamp, query, where, orderBy, onSnapshot, updateDoc, deleteDoc, addDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
-    import 'https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js'; // NUEVA IMPORTACIÓN
+    import { 
+        getFirestore, collection, doc, setDoc, getDoc, serverTimestamp, 
+        query, where, orderBy, onSnapshot, updateDoc, deleteDoc, addDoc, 
+        deleteField // <-- NUEVA IMPORTACIÓN
+    } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+    import 'https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js'; 
 
-    // 2. CONFIGURACIÓN E INICIALIZACIÓN (Limpia)
+    // 2. CONFIGURACIÓN E INICIALIZACIÓN (Sin cambios)
     const firebaseConfig = {
         apiKey: "AIzaSyBE6CYhaLokdTexZLH5zPJDmi-8a7KFbB0",
         authDomain: "chatapp-7382f.firebaseapp.com",
@@ -225,11 +290,9 @@ emoji-picker {
         appId: "1:27141261584:web:ecefba4affa1d3122bfd95",
         measurementId: "G-WTQPXV8B7J"
     };
-
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    // (Ya no inicializamos 'storage')
 
     // --- Variables Globales y Selectores del DOM ---
     let currentUser = null;
@@ -246,21 +309,20 @@ emoji-picker {
     const registerForm = document.getElementById('registerForm');
     const chatList = document.getElementById('chatList');
     const messageInput = document.getElementById('messageInput');
-    const emojiPicker = document.querySelector('emoji-picker'); // NUEVO
-    const emojiBtn = document.getElementById('emojiBtn'); // NUEVO
+    const emojiPicker = document.querySelector('emoji-picker'); 
+    const emojiBtn = document.getElementById('emojiBtn');
+    const reactionPanel = document.getElementById('reactionPanel'); // NUEVO
+    const messagesContainer = document.getElementById('messagesContainer'); // NUEVO
 
-    // --- Observador de Autenticación ---
+    // --- Observador de Autenticación (Sin cambios) ---
     onAuthStateChanged(auth, user => {
-        if (user) {
-            currentUser = user;
-            setupAppForUser();
-        } else {
-            currentUser = null;
-            showAuthScreen();
-        }
+        if (user) { currentUser = user; setupAppForUser(); } 
+        else { currentUser = null; showAuthScreen(); }
     });
 
-    // --- Funciones de Autenticación y Perfil (Sin cambios) ---
+    // --- Funciones de Autenticación, Perfil, Vistas, Latido, etc. (Sin cambios) ---
+    // (Todas las funciones desde registerUser hasta goBackToChats se quedan igual)
+    
     async function registerUser() {
         const name = document.getElementById('registerName').value.trim();
         const email = document.getElementById('registerEmail').value.trim();
@@ -271,10 +333,7 @@ emoji-picker {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
             await setDoc(doc(db, 'users', user.uid), {
-                name: name, 
-                email: email, 
-                lastSeen: serverTimestamp(), 
-                statusText: '¡Hola! Estoy usando ChatApp.'
+                name: name, email: email, lastSeen: serverTimestamp(), statusText: '¡Hola! Estoy usando ChatApp.'
             });
         } catch (error) { handleAuthError(error); }
     }
@@ -286,7 +345,7 @@ emoji-picker {
         try { await signInWithEmailAndPassword(auth, email, password); } catch (error) { handleAuthError(error); }
     }
     function logoutUser() { 
-        updateHeartbeat(false); // Le decimos al latido que pare
+        updateHeartbeat(false); 
         signOut(auth); 
     }
     function handleAuthError(error) {
@@ -310,20 +369,16 @@ emoji-picker {
             } catch (error) { console.error("Error al actualizar perfil:", error); }
         } else { alert("El nombre no puede estar vacío."); }
     }
-    
-    // --- Gestión de Vistas ---
     function showAuthScreen() {
         mainContent.style.display = 'none';
         chatScreen.style.display = 'none';
         authScreen.style.display = 'flex';
     }
-
-    let heartbeatInterval = null; // Variable para guardar el intervalo
+    let heartbeatInterval = null; 
     async function setupAppForUser() {
-        if (heartbeatInterval) clearInterval(heartbeatInterval); // Limpia el latido anterior si existe
-        updateHeartbeat(); // Llama una vez al inicio
-        heartbeatInterval = setInterval(updateHeartbeat, 30000); // Y luego cada 30 segundos
-
+        if (heartbeatInterval) clearInterval(heartbeatInterval); 
+        updateHeartbeat(); 
+        heartbeatInterval = setInterval(updateHeartbeat, 30000); 
         const userDocRef = doc(db, 'users', currentUser.uid);
         const userDoc = await getDoc(userDocRef);
         if (userDoc.exists()) {
@@ -337,8 +392,6 @@ emoji-picker {
         mainContent.style.display = 'flex';
         loadChats();
     }
-
-    // --- FUNCIÓN DE "LATIDO" (HEARTBEAT) ---
     function updateHeartbeat(isOnline = true) {
         if (!currentUser) {
             if (heartbeatInterval) clearInterval(heartbeatInterval);
@@ -346,19 +399,13 @@ emoji-picker {
         }
         const userDocRef = doc(db, 'users', currentUser.uid);
         try {
-            updateDoc(userDocRef, { 
-                lastSeen: serverTimestamp() 
-            });
-        } catch (e) {
-            console.log("No se pudo actualizar el heartbeat.");
-        }
-        // Si el usuario cierra sesión (isOnline = false), detenemos el intervalo
+            updateDoc(userDocRef, { lastSeen: serverTimestamp() });
+        } catch (e) { console.log("No se pudo actualizar el heartbeat."); }
         if (!isOnline && heartbeatInterval) {
             clearInterval(heartbeatInterval);
             heartbeatInterval = null;
         }
     }
-
     function showScreen(screen) {
         document.getElementById('chatsScreen').style.display = (screen === 'chats') ? 'block' : 'none';
         document.getElementById('profileScreen').style.display = (screen === 'profile') ? 'block' : 'none';
@@ -372,9 +419,11 @@ emoji-picker {
         if (unsubscribeChatListener) unsubscribeChatListener();
         if (unsubscribePresenceListener) unsubscribePresenceListener();
     }
+    
+    // --- LÓGICA PRINCIPAL DEL CHAT (Con funciones modificadas) ---
 
-    // --- LÓGICA PRINCIPAL DEL CHAT ---
     function loadChats() {
+        // ... (esta función no cambia) ...
         const chatsRef = collection(db, 'chats');
         const q = query(chatsRef, where('participants', 'array-contains', currentUser.uid), orderBy('lastUpdated', 'desc'));
         onSnapshot(q, snapshot => {
@@ -384,6 +433,7 @@ emoji-picker {
     }
 
     async function displayChatItem(chat) {
+        // ... (esta función no cambia) ...
         const otherId = chat.participants.find(id => id !== currentUser.uid);
         if (!otherId) return;
         const userDoc = await getDoc(doc(db, 'users', otherId));
@@ -391,12 +441,8 @@ emoji-picker {
         const userData = userDoc.data();
         const chatItem = document.createElement('li');
         chatItem.className = 'chat-item';
-        
         const isUnread = chat.isUnread && chat.isUnread[currentUser.uid] === true;
-        if (isUnread) {
-            chatItem.classList.add('unread');
-        }
-
+        if (isUnread) { chatItem.classList.add('unread'); }
         chatItem.innerHTML = `
             <div class="avatar">${userData.name.charAt(0).toUpperCase()}</div>
             <div class="chat-info">
@@ -414,6 +460,7 @@ emoji-picker {
     }
 
     async function startNewChat() {
+        // **MODIFICADO**: Añade el campo 'reactions' al crear el mensaje
         const otherUserId = prompt("Ingresa el ID del usuario para chatear:");
         if (!otherUserId || otherUserId.trim() === '' || otherUserId === currentUser.uid) return;
         try {
@@ -436,38 +483,26 @@ emoji-picker {
     }
 
     function openChat(chatId, otherUserId, otherUserName) {
+        // ... (esta función no cambia mucho) ...
         chatScreen.dataset.chatId = chatId;
         chatScreen.dataset.otherUser = otherUserId;
-           
         currentChatId = chatId;
         mainContent.style.display = 'none';
         chatScreen.style.display = 'flex';
         document.getElementById('currentChatName').textContent = otherUserName;
         document.getElementById('currentChatAvatar').textContent = otherUserName.charAt(0).toUpperCase();
-        loadMessages(chatId);
-
+        loadMessages(chatId); // <-- ¡Esta función va a cambiar!
         const chatRef = doc(db, 'chats', chatId);
-        updateDoc(chatRef, {
-            [`isUnread.${currentUser.uid}`]: false
-        });
-
+        updateDoc(chatRef, { [`isUnread.${currentUser.uid}`]: false });
         unsubscribePresenceListener = onSnapshot(doc(db, 'users', otherUserId), userDoc => {
             const userData = userDoc.data();
             const statusEl = document.getElementById('onlineStatus');
             if (userData && userData.lastSeen) {
-                const lastSeenDate = userData.lastSeen.toDate();
-                const now = new Date();
-                const diffMinutes = (now.getTime() - lastSeenDate.getTime()) / 60000;
-                if (diffMinutes < 1) { 
-                    statusEl.textContent = 'En línea';
-                } else {
-                    statusEl.textContent = `Últ. vez ${formatTimestamp(userData.lastSeen)}`;
-                }
-            } else {
-                statusEl.textContent = 'Desconectado';
-            }
+                const diffMinutes = (new Date().getTime() - userData.lastSeen.toDate().getTime()) / 60000;
+                if (diffMinutes < 1) { statusEl.textContent = 'En línea'; } 
+                else { statusEl.textContent = `Últ. vez ${formatTimestamp(userData.lastSeen)}`; }
+            } else { statusEl.textContent = 'Desconectado'; }
         });
-        
         unsubscribeChatListener = onSnapshot(doc(db, 'chats', chatId), chatDoc => {
             const chatData = chatDoc.data();
             document.getElementById('typingIndicator').style.display = (chatData?.typing && chatData.typing[otherUserId]) ? 'block' : 'none';
@@ -475,33 +510,49 @@ emoji-picker {
     }
 
     function deleteChat(chatId) {
+        // ... (esta función no cambia) ...
         if (confirm("¿Estás seguro de que quieres eliminar este chat?")) {
             deleteDoc(doc(db, 'chats', chatId));
         }
     }
 
+    // **MODIFICADO**: Esta función ahora se actualiza en tiempo real
     function loadMessages(chatId) {
-        const messagesContainer = document.getElementById('messagesContainer');
-        messagesContainer.innerHTML = '';
         const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
+        
+        // onSnapshot ahora redibuja todo con cada cambio (incluyendo reacciones)
         onSnapshot(q, snapshot => {
-            snapshot.docChanges().forEach(change => {
-                if (change.type === 'added') displayMessage(change.doc.data());
+            messagesContainer.innerHTML = ''; // Limpia todos los mensajes
+            snapshot.forEach(doc => {
+                displayMessage(doc.id, doc.data()); // Vuelve a dibujar cada mensaje
             });
+            // Auto-scroll al fondo
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         });
     }
 
-    // MODIFICADO: displayMessage (limpiado de código de imagen)
-    function displayMessage(message) {
-        const messagesContainer = document.getElementById('messagesContainer');
+    // **MODIFICADO**: Ahora acepta 'messageId' y dibuja las reacciones
+    function displayMessage(messageId, message) {
         const el = document.createElement('div');
         const isSent = message.senderId === currentUser.uid;
         el.className = `message ${isSent ? 'sent' : 'received'}`;
-        // Lógica de imagen eliminada
+        el.dataset.messageId = messageId; // <-- Importante: guarda el ID en el elemento
+        
+        let reactionsHTML = '';
+        if (message.reactions) {
+            // Usamos Set para mostrar cada emoji solo una vez
+            const uniqueEmojis = [...new Set(Object.values(message.reactions))]; 
+            reactionsHTML = `
+                <div class="reactions-container">
+                    ${uniqueEmojis.map(emoji => `<span class="reaction-emoji">${emoji}</span>`).join('')}
+                </div>
+            `;
+        }
+
         el.innerHTML = `
             ${message.text}
             <span class="message-time">${formatTime(message.timestamp)}</span>
+            ${reactionsHTML}
         `;
         messagesContainer.appendChild(el);
     }
@@ -514,7 +565,13 @@ emoji-picker {
         messageInput.value = '';
         setTyping(false);
         
-        await addDoc(collection(db, 'chats', chatId, 'messages'), { text, senderId: currentUser.uid, timestamp: serverTimestamp() });
+        // **MODIFICADO**: Añade el campo 'reactions' al crear el mensaje
+        await addDoc(collection(db, 'chats', chatId, 'messages'), { 
+            text, 
+            senderId: currentUser.uid, 
+            timestamp: serverTimestamp(),
+            reactions: {} // <-- NUEVO: Inicializa el mapa de reacciones
+        });
         
         await updateDoc(doc(db, 'chats', chatId), { 
             lastMessage: text, 
@@ -524,7 +581,39 @@ emoji-picker {
         });
     }
 
-    // (Funciones 'sendImageMessage' y 'uploadImage' eliminadas)
+    // --- NUEVAS FUNCIONES PARA REACCIONES ---
+
+    function showReactionPanel(event, messageId) {
+        reactionPanel.dataset.messageId = messageId; // Guarda el ID del mensaje en el panel
+        // Posiciona el panel cerca del clic
+        const rect = event.target.getBoundingClientRect();
+        reactionPanel.style.left = `${rect.left + rect.width / 2}px`;
+        reactionPanel.style.top = `${rect.top}px`; // Se ajusta con el transform de CSS
+        reactionPanel.style.display = 'flex';
+    }
+
+    async function addReaction(emoji) {
+        const messageId = reactionPanel.dataset.messageId;
+        const chatId = chatScreen.dataset.chatId;
+        if (!messageId || !chatId) return;
+
+        const docRef = doc(db, 'chats', chatId, 'messages', messageId);
+        
+        if (emoji === '❌') {
+            // Opción de borrar reacción
+            await updateDoc(docRef, {
+                [`reactions.${currentUser.uid}`]: deleteField() // Borra la clave del usuario
+            });
+        } else {
+            // Añade o actualiza la reacción
+            await updateDoc(docRef, {
+                [`reactions.${currentUser.uid}`]: emoji // Establece el emoji para este usuario
+            });
+        }
+        
+        reactionPanel.style.display = 'none'; // Oculta el panel
+    }
+
 
     // --- Otras funciones (tipeo, formato de fecha, etc.) ---
     function setTyping(isTyping) {
@@ -546,63 +635,66 @@ emoji-picker {
         return date.toLocaleDateString();
     }
 
-    // --- Event Listeners (completos) ---
+    // --- Event Listeners (completos y modificados) ---
     document.getElementById('registerButton').addEventListener('click', registerUser);
     document.getElementById('loginButton').addEventListener('click', loginUser);
     document.getElementById('logoutButton').addEventListener('click', logoutUser);
     document.getElementById('showRegister').addEventListener('click', () => { registerForm.style.display = 'block'; loginForm.style.display = 'none'; authError.textContent = ''; });
     document.getElementById('showLogin').addEventListener('click', () => { loginForm.style.display = 'block'; registerForm.style.display = 'none'; authError.textContent = ''; });
-    
     document.getElementById('newChatBtn').addEventListener('click', startNewChat);
     document.getElementById('backBtn').addEventListener('click', goBackToChats);
     document.getElementById('sendBtn').addEventListener('click', sendMessage);
     document.getElementById('navChats').addEventListener('click', () => showScreen('chats'));
     document.getElementById('navProfile').addEventListener('click', () => showScreen('profile'));
     document.getElementById('saveProfileBtn').addEventListener('click', updateProfile);
-
     messageInput.addEventListener('keypress', e => { if (e.key === 'Enter') { e.preventDefault(); sendMessage(); } });
     messageInput.addEventListener('input', () => { clearTimeout(typingTimeout); setTyping(true); typingTimeout = setTimeout(() => setTyping(false), 2000); });
     document.getElementById('currentUserId').addEventListener('click', () => navigator.clipboard.writeText(currentUser.uid).then(() => alert('ID copiado!')));
-
     chatList.addEventListener('click', e => {
         if (e.target.classList.contains('delete-chat')) {
             e.stopPropagation();
             deleteChat(e.target.dataset.chatId);
         }
     });
-
-    // --- NUEVOS LISTENERS PARA EMOJI ---
     emojiBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // Evita que el clic se propague
+        e.stopPropagation(); 
         emojiPicker.classList.toggle('emoji-picker-hidden');
     });
-
     emojiPicker.addEventListener('emoji-click', event => {
-        messageInput.value += event.detail.emoji.unicode; // Añade el emoji al input
-        messageInput.focus(); // Devuelve el foco al input
+        messageInput.value += event.detail.emoji.unicode; 
+        messageInput.focus(); 
     });
 
-    // Cierra el picker si haces clic en cualquier otro lado
+    // --- NUEVOS LISTENERS PARA REACCIONES ---
+
+    // Listener de clic en el contenedor de mensajes (delegación de eventos)
+    messagesContainer.addEventListener('click', (e) => {
+        const messageEl = e.target.closest('.message'); // Encuentra la burbuja de mensaje más cercana
+        if (messageEl) {
+            e.stopPropagation(); // Evita que se oculte el panel
+            const messageId = messageEl.dataset.messageId;
+            showReactionPanel(e, messageId);
+        }
+    });
+
+    // Listeners para los botones del panel
+    reactionPanel.addEventListener('click', (e) => {
+        e.stopPropagation(); // Evita que el clic se propague
+        const button = e.target.closest('.reaction-button');
+        if (button) {
+            addReaction(button.dataset.emoji);
+        }
+    });
+
+    // Cierra los pop-ups (emoji y reacciones) si haces clic en cualquier otro lado
     document.addEventListener('click', (e) => {
         if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
             emojiPicker.classList.add('emoji-picker-hidden');
         }
+        if (!reactionPanel.contains(e.target)) {
+            reactionPanel.style.display = 'none';
+        }
     });
 </script>
-
-    <script>
-      // Registra el Service Worker
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js')
-            .then(registration => {
-              console.log('Service Worker registrado con éxito:', registration);
-            })
-    _       .catch(err => {
-              console.log('Error al registrar el Service Worker:', err);
-            });
-        });
-      }
-    </script>
 </body>
 </html>
