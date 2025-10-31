@@ -18,6 +18,21 @@
   
     <style>
       
+      .unread-bubble {
+    background-color: #128C7E; /* Color del tema */
+    color: white;
+    border-radius: 50%;
+    min-width: 22px;
+    height: 22px;
+    padding: 2px;
+    font-size: 12px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 5px;
+}
+      
       /* --- Estilos para Reacciones --- */
 
 /* El panel pop-up */
@@ -270,13 +285,13 @@ emoji-picker {
             <button class="reaction-button" data-emoji="❌">❌</button>
         </div>
     <script type="module">
-    // 1. IMPORTACIONES (Añadimos 'deleteField' para poder quitar reacciones)
+    // 1. IMPORTACIONES (Añadimos 'increment' de Firestore)
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
     import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
     import { 
         getFirestore, collection, doc, setDoc, getDoc, serverTimestamp, 
         query, where, orderBy, onSnapshot, updateDoc, deleteDoc, addDoc, 
-        deleteField // <-- NUEVA IMPORTACIÓN
+        increment // <-- NUEVA IMPORTACIÓN (clave para el conteo)
     } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
     import 'https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js'; 
 
@@ -311,8 +326,8 @@ emoji-picker {
     const messageInput = document.getElementById('messageInput');
     const emojiPicker = document.querySelector('emoji-picker'); 
     const emojiBtn = document.getElementById('emojiBtn');
-    const reactionPanel = document.getElementById('reactionPanel'); // NUEVO
-    const messagesContainer = document.getElementById('messagesContainer'); // NUEVO
+    const reactionPanel = document.getElementById('reactionPanel'); 
+    const messagesContainer = document.getElementById('messagesContainer'); 
 
     // --- Observador de Autenticación (Sin cambios) ---
     onAuthStateChanged(auth, user => {
@@ -432,8 +447,8 @@ emoji-picker {
         });
     }
 
+    // **MODIFICADO**: Dibuja la burbuja de conteo en lugar del punto
     async function displayChatItem(chat) {
-        // ... (esta función no cambia) ...
         const otherId = chat.participants.find(id => id !== currentUser.uid);
         if (!otherId) return;
         const userDoc = await getDoc(doc(db, 'users', otherId));
@@ -441,8 +456,14 @@ emoji-picker {
         const userData = userDoc.data();
         const chatItem = document.createElement('li');
         chatItem.className = 'chat-item';
-        const isUnread = chat.isUnread && chat.isUnread[currentUser.uid] === true;
-        if (isUnread) { chatItem.classList.add('unread'); }
+        
+        // **NUEVA LÓGICA DE CONTEO**
+        const unreadCount = chat.unreadCount ? (chat.unreadCount[currentUser.uid] || 0) : 0;
+        
+        if (unreadCount > 0) {
+            chatItem.classList.add('unread'); // Sigue poniendo el texto en negrita
+        }
+
         chatItem.innerHTML = `
             <div class="avatar">${userData.name.charAt(0).toUpperCase()}</div>
             <div class="chat-info">
@@ -451,7 +472,7 @@ emoji-picker {
             </div>
             <div class="chat-meta">
                 <div class="chat-timestamp">${formatTimestamp(chat.lastUpdated)}</div>
-                ${isUnread ? '<div class="unread-dot"></div>' : ''}
+                ${unreadCount > 0 ? `<div class="unread-bubble">${unreadCount}</div>` : ''} 
                 <button class="delete-chat" data-chat-id="${chat.id}">🗑️</button>
             </div>
         `;
@@ -459,8 +480,8 @@ emoji-picker {
         chatItem.addEventListener('click', () => openChat(chat.id, otherId, userData.name));
     }
 
+    // **MODIFICADO**: Inicializa 'unreadCount' en 0 para ambos usuarios
     async function startNewChat() {
-        // **MODIFICADO**: Añade el campo 'reactions' al crear el mensaje
         const otherUserId = prompt("Ingresa el ID del usuario para chatear:");
         if (!otherUserId || otherUserId.trim() === '' || otherUserId === currentUser.uid) return;
         try {
@@ -475,15 +496,19 @@ emoji-picker {
                     lastUpdated: serverTimestamp(), 
                     lastMessage: '', 
                     typing: {},
-                    isUnread: {} 
+                    // **CAMBIO**: de 'isUnread' a 'unreadCount'
+                    unreadCount: {
+                        [currentUser.uid]: 0,
+                        [otherUserId]: 0
+                    } 
                 });
             }
             openChat(chatId, otherUserId, userDoc.data().name);
         } catch (error) { console.error("Error al iniciar chat:", error); }
     }
 
+    // **MODIFICADO**: Reinicia el conteo a 0 al abrir el chat
     function openChat(chatId, otherUserId, otherUserName) {
-        // ... (esta función no cambia mucho) ...
         chatScreen.dataset.chatId = chatId;
         chatScreen.dataset.otherUser = otherUserId;
         currentChatId = chatId;
@@ -491,9 +516,15 @@ emoji-picker {
         chatScreen.style.display = 'flex';
         document.getElementById('currentChatName').textContent = otherUserName;
         document.getElementById('currentChatAvatar').textContent = otherUserName.charAt(0).toUpperCase();
-        loadMessages(chatId); // <-- ¡Esta función va a cambiar!
+        loadMessages(chatId); 
+        
+        // **CAMBIO**: Pone el 'unreadCount' del usuario actual a 0
         const chatRef = doc(db, 'chats', chatId);
-        updateDoc(chatRef, { [`isUnread.${currentUser.uid}`]: false });
+        updateDoc(chatRef, {
+            [`unreadCount.${currentUser.uid}`]: 0
+        });
+
+        // El resto de la función (presencia, 'escribiendo') no cambia
         unsubscribePresenceListener = onSnapshot(doc(db, 'users', otherUserId), userDoc => {
             const userData = userDoc.data();
             const statusEl = document.getElementById('onlineStatus');
@@ -516,31 +547,27 @@ emoji-picker {
         }
     }
 
-    // **MODIFICADO**: Esta función ahora se actualiza en tiempo real
+    // **MODIFICADO**: Ahora se actualiza en tiempo real para las reacciones
     function loadMessages(chatId) {
         const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp', 'asc'));
-        
-        // onSnapshot ahora redibuja todo con cada cambio (incluyendo reacciones)
         onSnapshot(q, snapshot => {
-            messagesContainer.innerHTML = ''; // Limpia todos los mensajes
+            messagesContainer.innerHTML = ''; 
             snapshot.forEach(doc => {
-                displayMessage(doc.id, doc.data()); // Vuelve a dibujar cada mensaje
+                displayMessage(doc.id, doc.data()); 
             });
-            // Auto-scroll al fondo
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         });
     }
 
-    // **MODIFICADO**: Ahora acepta 'messageId' y dibuja las reacciones
+    // **MODIFICADO**: Dibuja reacciones
     function displayMessage(messageId, message) {
         const el = document.createElement('div');
         const isSent = message.senderId === currentUser.uid;
         el.className = `message ${isSent ? 'sent' : 'received'}`;
-        el.dataset.messageId = messageId; // <-- Importante: guarda el ID en el elemento
+        el.dataset.messageId = messageId;
         
         let reactionsHTML = '';
         if (message.reactions) {
-            // Usamos Set para mostrar cada emoji solo una vez
             const uniqueEmojis = [...new Set(Object.values(message.reactions))]; 
             reactionsHTML = `
                 <div class="reactions-container">
@@ -548,7 +575,6 @@ emoji-picker {
                 </div>
             `;
         }
-
         el.innerHTML = `
             ${message.text}
             <span class="message-time">${formatTime(message.timestamp)}</span>
@@ -557,6 +583,7 @@ emoji-picker {
         messagesContainer.appendChild(el);
     }
 
+    // **MODIFICADO**: Incrementa el 'unreadCount' del otro usuario
     async function sendMessage() {
         const text = messageInput.value.trim();
         if (text === '' || !chatScreen.dataset.chatId) return;
@@ -565,55 +592,46 @@ emoji-picker {
         messageInput.value = '';
         setTyping(false);
         
-        // **MODIFICADO**: Añade el campo 'reactions' al crear el mensaje
         await addDoc(collection(db, 'chats', chatId, 'messages'), { 
             text, 
             senderId: currentUser.uid, 
             timestamp: serverTimestamp(),
-            reactions: {} // <-- NUEVO: Inicializa el mapa de reacciones
+            reactions: {} 
         });
         
+        // **CAMBIO**: Usa 'increment' para el otro usuario
         await updateDoc(doc(db, 'chats', chatId), { 
             lastMessage: text, 
             lastUpdated: serverTimestamp(),
-            [`isUnread.${otherUserId}`]: true,
-            [`isUnread.${currentUser.uid}`]: false 
+            [`unreadCount.${otherUserId}`]: increment(1), // <-- Magia de Firestore
+            [`unreadCount.${currentUser.uid}`]: 0 // Reinicia tu propio contador
         });
     }
 
-    // --- NUEVAS FUNCIONES PARA REACCIONES ---
-
+    // --- Funciones de Reacciones (Sin cambios) ---
     function showReactionPanel(event, messageId) {
-        reactionPanel.dataset.messageId = messageId; // Guarda el ID del mensaje en el panel
-        // Posiciona el panel cerca del clic
+        reactionPanel.dataset.messageId = messageId; 
         const rect = event.target.getBoundingClientRect();
         reactionPanel.style.left = `${rect.left + rect.width / 2}px`;
-        reactionPanel.style.top = `${rect.top}px`; // Se ajusta con el transform de CSS
+        reactionPanel.style.top = `${rect.top}px`; 
         reactionPanel.style.display = 'flex';
     }
-
     async function addReaction(emoji) {
         const messageId = reactionPanel.dataset.messageId;
         const chatId = chatScreen.dataset.chatId;
         if (!messageId || !chatId) return;
-
         const docRef = doc(db, 'chats', chatId, 'messages', messageId);
-        
         if (emoji === '❌') {
-            // Opción de borrar reacción
             await updateDoc(docRef, {
-                [`reactions.${currentUser.uid}`]: deleteField() // Borra la clave del usuario
+                [`reactions.${currentUser.uid}`]: deleteField() 
             });
         } else {
-            // Añade o actualiza la reacción
             await updateDoc(docRef, {
-                [`reactions.${currentUser.uid}`]: emoji // Establece el emoji para este usuario
+                [`reactions.${currentUser.uid}`]: emoji 
             });
         }
-        
-        reactionPanel.style.display = 'none'; // Oculta el panel
+        reactionPanel.style.display = 'none'; 
     }
-
 
     // --- Otras funciones (tipeo, formato de fecha, etc.) ---
     function setTyping(isTyping) {
@@ -635,7 +653,7 @@ emoji-picker {
         return date.toLocaleDateString();
     }
 
-    // --- Event Listeners (completos y modificados) ---
+    // --- Event Listeners (completos y sin cambios) ---
     document.getElementById('registerButton').addEventListener('click', registerUser);
     document.getElementById('loginButton').addEventListener('click', loginUser);
     document.getElementById('logoutButton').addEventListener('click', logoutUser);
@@ -664,29 +682,21 @@ emoji-picker {
         messageInput.value += event.detail.emoji.unicode; 
         messageInput.focus(); 
     });
-
-    // --- NUEVOS LISTENERS PARA REACCIONES ---
-
-    // Listener de clic en el contenedor de mensajes (delegación de eventos)
     messagesContainer.addEventListener('click', (e) => {
-        const messageEl = e.target.closest('.message'); // Encuentra la burbuja de mensaje más cercana
+        const messageEl = e.target.closest('.message'); 
         if (messageEl) {
-            e.stopPropagation(); // Evita que se oculte el panel
+            e.stopPropagation(); 
             const messageId = messageEl.dataset.messageId;
             showReactionPanel(e, messageId);
         }
     });
-
-    // Listeners para los botones del panel
     reactionPanel.addEventListener('click', (e) => {
-        e.stopPropagation(); // Evita que el clic se propague
+        e.stopPropagation(); 
         const button = e.target.closest('.reaction-button');
         if (button) {
             addReaction(button.dataset.emoji);
         }
     });
-
-    // Cierra los pop-ups (emoji y reacciones) si haces clic en cualquier otro lado
     document.addEventListener('click', (e) => {
         if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
             emojiPicker.classList.add('emoji-picker-hidden');
@@ -696,5 +706,21 @@ emoji-picker {
         }
     });
 </script>
+  
+<script>
+// Registra el Service Worker
+if ('serviceWorker' in navigator) {
+window.addEventListener('load', () => {
+navigator.serviceWorker.register('./sw.js')
+.then(registration => {
+console.log('Service Worker registrado con éxito:', registration);
+})
+.catch(err => {
+console.log('Error al registrar el Service Worker:', err);
+});
+});
+}
+</script>
+  
 </body>
 </html>
