@@ -285,13 +285,13 @@ emoji-picker {
             <button class="reaction-button" data-emoji="❌">❌</button>
         </div>
     <script type="module">
-    // 1. IMPORTACIONES (Añadimos 'increment' de Firestore)
+    // 1. IMPORTACIONES (Añadimos 'getDocs' para buscar por código corto)
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
     import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
     import { 
         getFirestore, collection, doc, setDoc, getDoc, serverTimestamp, 
         query, where, orderBy, onSnapshot, updateDoc, deleteDoc, addDoc, 
-        increment // <-- NUEVA IMPORTACIÓN (clave para el conteo)
+        deleteField, increment, getDocs // <-- NUEVA IMPORTACIÓN
     } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
     import 'https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js'; 
 
@@ -309,11 +309,12 @@ emoji-picker {
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // --- Variables Globales y Selectores del DOM ---
+    // --- Variables Globales ---
     let currentUser = null;
     let currentChatId = null; 
     let unsubscribeChatListener = null;
     let unsubscribePresenceListener = null;
+    let unsubscribeMessages = null;
     let typingTimeout = null;
     
     const authScreen = document.getElementById('authScreen');
@@ -338,6 +339,14 @@ emoji-picker {
     // --- Funciones de Autenticación, Perfil, Vistas, Latido, etc. (Sin cambios) ---
     // (Todas las funciones desde registerUser hasta goBackToChats se quedan igual)
     
+    // --- NUEVO: Generador de ID Corto ---
+    function generateShortId() {
+        // Genera algo como "A7X9B2" (6 caracteres alfanuméricos mayúsculas)
+        return Math.random().toString(36).substring(2, 8).toUpperCase();
+    }
+
+    // --- Funciones de Autenticación ---
+    
     async function registerUser() {
         const name = document.getElementById('registerName').value.trim();
         const email = document.getElementById('registerEmail').value.trim();
@@ -347,11 +356,17 @@ emoji-picker {
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
+            // **MODIFICADO**: Ahora guardamos un shortId al registrarse
             await setDoc(doc(db, 'users', user.uid), {
-                name: name, email: email, lastSeen: serverTimestamp(), statusText: '¡Hola! Estoy usando ChatApp.'
+                name: name, 
+                email: email, 
+                shortId: generateShortId(), // <-- NUEVO
+                lastSeen: serverTimestamp(), 
+                statusText: '¡Hola! Estoy usando ChatApp.'
             });
         } catch (error) { handleAuthError(error); }
     }
+
     async function loginUser() {
         const email = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value.trim();
@@ -363,6 +378,7 @@ emoji-picker {
         updateHeartbeat(false); 
         signOut(auth); 
     }
+      
     function handleAuthError(error) {
         console.error("Error de autenticación:", error.code);
         switch (error.code) {
@@ -394,19 +410,44 @@ emoji-picker {
         if (heartbeatInterval) clearInterval(heartbeatInterval); 
         updateHeartbeat(); 
         heartbeatInterval = setInterval(updateHeartbeat, 30000); 
+        
         const userDocRef = doc(db, 'users', currentUser.uid);
         const userDoc = await getDoc(userDocRef);
+        
         if (userDoc.exists()) {
             const userData = userDoc.data();
+            
+            // **MODIFICADO**: Auto-reparación para usuarios viejos
+            // Si tu usuario actual no tiene ID corto, se lo creamos ahora mismo
+            let myShortId = userData.shortId;
+            if (!myShortId) {
+                myShortId = generateShortId();
+                await updateDoc(userDocRef, { shortId: myShortId });
+            }
+
             document.getElementById('profileName').value = userData.name || '';
             document.getElementById('profileStatus').value = userData.statusText || '';
+            
+            // **MODIFICADO**: Mostramos el ID Corto en lugar del largo
+            const idDisplay = document.getElementById('currentUserId');
+            idDisplay.textContent = `Tu ID: ${myShortId}`;
+            
+            // Cambiamos el evento de copiar para que copie el corto
+            // Eliminamos listeners antiguos clonando el elemento
+            const newIdDisplay = idDisplay.cloneNode(true);
+            idDisplay.parentNode.replaceChild(newIdDisplay, idDisplay);
+            
+            newIdDisplay.addEventListener('click', () => {
+                navigator.clipboard.writeText(myShortId).then(() => alert('ID copiado: ' + myShortId));
+            });
         }
-        document.getElementById('currentUserId').textContent = `Tu ID: ${currentUser.uid}`;
+
         authScreen.style.display = 'none';
         chatScreen.style.display = 'none';
         mainContent.style.display = 'flex';
         loadChats();
     }
+      
     function updateHeartbeat(isOnline = true) {
         if (!currentUser) {
             if (heartbeatInterval) clearInterval(heartbeatInterval);
@@ -482,32 +523,51 @@ emoji-picker {
 
     // **MODIFICADO**: Inicializa 'unreadCount' en 0 para ambos usuarios
     async function startNewChat() {
-        const otherUserId = prompt("Ingresa el ID del usuario para chatear:");
-        if (!otherUserId || otherUserId.trim() === '' || otherUserId === currentUser.uid) return;
+        const shortIdInput = prompt("Ingresa el ID CORTO de tu amigo (ej: A7X9B2):");
+        if (!shortIdInput || shortIdInput.trim() === '') return;
+        
+        const code = shortIdInput.trim().toUpperCase(); // Nos aseguramos que sea mayúscula
+        
         try {
-            const userDoc = await getDoc(doc(db, 'users', otherUserId));
-            if (!userDoc.exists()) { alert("Usuario no encontrado."); return; }
+            // 1. Buscamos en la colección de usuarios quién tiene este shortId
+            const usersRef = collection(db, 'users');
+            const q = query(usersRef, where('shortId', '==', code));
+            const querySnapshot = await getDocs(q);
+
+            if (querySnapshot.empty) {
+                alert("Usuario no encontrado con ese ID corto.");
+                return;
+            }
+
+            // 2. Obtenemos el ID real (largo) de ese usuario
+            const otherUserDoc = querySnapshot.docs[0];
+            const otherUserId = otherUserDoc.id; // Este es el ID largo que necesita Firebase
+            const otherUserData = otherUserDoc.data();
+
+            if (otherUserId === currentUser.uid) {
+                alert("No puedes chatear contigo mismo.");
+                return;
+            }
+
+            // 3. El resto sigue igual, usando el ID largo internamente
             const chatId = [currentUser.uid, otherUserId].sort().join('_');
             const chatRef = doc(db, 'chats', chatId);
             const chatDoc = await getDoc(chatRef);
+            
             if (!chatDoc.exists()) {
                 await setDoc(chatRef, { 
                     participants: [currentUser.uid, otherUserId], 
                     lastUpdated: serverTimestamp(), 
                     lastMessage: '', 
                     typing: {},
-                    // **CAMBIO**: de 'isUnread' a 'unreadCount'
-                    unreadCount: {
-                        [currentUser.uid]: 0,
-                        [otherUserId]: 0
-                    } 
+                    unreadCount: { [currentUser.uid]: 0, [otherUserId]: 0 } 
                 });
             }
-            openChat(chatId, otherUserId, userDoc.data().name);
+            openChat(chatId, otherUserId, otherUserData.name);
+
         } catch (error) { console.error("Error al iniciar chat:", error); }
     }
 
-    // **MODIFICADO**: Reinicia el conteo a 0 al abrir el chat
     function openChat(chatId, otherUserId, otherUserName) {
         chatScreen.dataset.chatId = chatId;
         chatScreen.dataset.otherUser = otherUserId;
@@ -516,15 +576,12 @@ emoji-picker {
         chatScreen.style.display = 'flex';
         document.getElementById('currentChatName').textContent = otherUserName;
         document.getElementById('currentChatAvatar').textContent = otherUserName.charAt(0).toUpperCase();
+        
         loadMessages(chatId); 
         
-        // **CAMBIO**: Pone el 'unreadCount' del usuario actual a 0
         const chatRef = doc(db, 'chats', chatId);
-        updateDoc(chatRef, {
-            [`unreadCount.${currentUser.uid}`]: 0
-        });
+        updateDoc(chatRef, { [`unreadCount.${currentUser.uid}`]: 0 });
 
-        // El resto de la función (presencia, 'escribiendo') no cambia
         unsubscribePresenceListener = onSnapshot(doc(db, 'users', otherUserId), userDoc => {
             const userData = userDoc.data();
             const statusEl = document.getElementById('onlineStatus');
